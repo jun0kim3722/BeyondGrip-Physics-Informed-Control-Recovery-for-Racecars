@@ -284,4 +284,5 @@ This project is licensed under the MIT License - see the `LICENSE` file for deta
 - Francesco Moretti (TII EuroRacing - Unimore)
 - Ayoub Raji (TII EuroRacing - Unimore)
 #   B e y o n d G r i p - P h y s i c s - I n f o r m e d - C o n t r o l - R e c o v e r y - f o r - R a c e c a r s  
+ #   B e y o n d G r i p - P h y s i c s - I n f o r m e d - C o n t r o l - R e c o v e r y - f o r - R a c e c a r s  
  
