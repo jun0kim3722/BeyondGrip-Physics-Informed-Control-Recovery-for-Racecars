@@ -188,7 +188,8 @@ class Agent:
 
                 if self.checkpoint_freq and (self._steps % self.checkpoint_freq == 0):
                     logger.info(f"checkpointing model {self._steps} steps")
-                    self.save(os.path.join(self._model_dir, "checkpoints", f"step_{self._steps:08d}"), save_buffer=False)
+                    # set to true to save the buffer
+                    self.save(os.path.join(self._model_dir, "checkpoints", f"step_{self._steps:08d}"), save_buffer=True)
         except TimeoutError:
             logger.exception("Agent TimeoutError")
         finally:

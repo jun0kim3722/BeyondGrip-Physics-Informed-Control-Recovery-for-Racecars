@@ -14,7 +14,8 @@ sys.path.extend([os.path.abspath('./assetto_corsa_gym'), './algorithm/discor'])
 # Custom module imports
 import AssettoCorsaEnv.assettoCorsa as assettoCorsa
 import AssettoCorsaEnv.data_loader as data_loader
-from discor.algorithm import SAC, DisCor
+from discor.algorithm import SAC, DisCor, DDPG
+
 from discor.agent import Agent
 import common.misc as misc
 import common.logging_config as logging_config
@@ -84,6 +85,14 @@ def main():
             action_dim=env.action_space.shape[0],
             device=device, seed=config.seed,
             **OmegaConf.to_container(config.SAC))
+    elif args.algo == "ddpg":
+        algo = DDPG(
+            state_dim=env.observation_space.shape[0],
+            action_dim=env.action_space.shape[0],
+            device=device,
+            seed=config.seed,
+            **OmegaConf.to_container(config.DDPG)
+        )
     else:
         raise Exception('You need to set algo sac or discor')
 
@@ -99,11 +108,13 @@ def main():
     else:
         wandb_logger = None
 
+    #agent = Agent(env=env, test_env=env, algo=algo, log_dir=config.work_dir,
+                  #device=device, seed=config.seed, **config.Agent, wandb_logger=wandb_logger)
     agent = Agent(env=env, test_env=env, algo=algo, log_dir=config.work_dir,
                   device=device, seed=config.seed, **config.Agent, wandb_logger=wandb_logger)
 
     if not args.test and config.load_offline_data:
-        data_config_file = os.path.abspath(r"./ac_offline_train_paths.yml")
+        data_config_file = os.path.abspath(r"./ac_offline_train_paths_gt3.yml")
         logger.info("Loading offline dataset...")
         assert config.dataset_path, "dataset_path not set in config"
         dataset_path = Path(config.dataset_path + os.sep)
@@ -129,11 +140,20 @@ def main():
     if config.pre_train:
         agent.pre_train()
 
+
+    # if config.pre_train:
+
+    #     agent._replay_buffer.online(False)
+    #     agent.pre_train()
+    #     agent._replay_buffer.online(True)
+
+
     if args.load_path is not None:
         load_buffer = False if args.test else True
-        agent.load(args.load_path, load_buffer=load_buffer)
+        agent.load(args.load_path, load_buffer=False)
 
     if args.test:
+        #agent.num_eval_episodes=2
         agent._env.set_eval_mode()
         agent.evaluate()
         logger.info("done evaluation")

@@ -1,0 +1,26 @@
+python train.py --test --load_path C:\Users\22ave\Documents\assettoCorsaGym\data_sets\monza\bmw_z4_gt3\20241108_SAC\model\checkpoints\step_07000000 AssettoCorsa.track=monza AssettoCorsa.car=bmw_z4_gt3 AssettoCorsa.eval_number_of_laps=2
+
+
+263706d031b9bc1bf2dfbf06950332796d55a6ff
+
+python train.py load_offline_data=True Agent.use_offline_buffer=True AssettoCorsa.track=monza AssettoCorsa.car=bmw_z4_gt3 dataset_path=C:\Users\22ave\Documents\assettoCorsaGym\data_sets\
+
+python train.py load_offline_data=True Agent.use_offline_buffer=True AssettoCorsa.track=monza AssettoCorsa.car=bmw_z4_gt3 dataset_path=C:\Users\22ave\Documents\assettoCorsaGym\data_sets\
+
+python train.py load_offline_data=True Agent.use_offline_buffer=True dataset_path=C:\Users\22ave\Documents\assettoCorsaGym\data_sets\
+
+
+
+python train.py load_offline_data=True pre_train=True AssettoCorsa.track= ks_barcelona-layout_gp AssettoCorsa.car=bmw_z4_gt3 dataset_path=C:\Users\22ave\Documents\assettoCorsaGym\data_sets\
+
+
+
+Works
+python train.py load_offline_data=True pre_train=True AssettoCorsa.track=ks_barcelona-layout_gp AssettoCorsa.car=bmw_z4_gt3 dataset_path=C:\Users\22ave\Documents\assettoCorsaGym\data_sets\
+
+
+# No pretraining path
+python train.py -- algo ddpg load_offline_data=True pre_train=True AssettoCorsa.track=ks_barcelona-layout_gp AssettoCorsa.car=bmw_z4_gt3 dataset_path=C:\Users\22ave\Documents\temp_log
+
+
+python train.py --algo ddpg --load_path C:\Users\22ave\Documents\assetto_corsa_gym\outputs\20251124_190341.472_ddpg_no_pretrain\model\checkpoints\step_00220000 AssettoCorsa.track=ks_barcelona-layout_gp AssettoCorsa.car=bmw_z4_gt3
