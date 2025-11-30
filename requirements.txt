@@ -32,4 +32,6 @@ wandb
 pygame
 numba
 pyarrow
+do-mpc
+casadi
 evdev; sys_platform == "linux"

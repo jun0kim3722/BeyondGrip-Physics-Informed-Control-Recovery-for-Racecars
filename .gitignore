@@ -4,6 +4,8 @@ data/data_sets
 archive
 *.ptorch
 *.pkl?
+AssettoCorsaGymDataSet/
+outputs_scenario/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
