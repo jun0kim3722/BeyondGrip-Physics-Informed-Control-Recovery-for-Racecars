@@ -103,3 +103,17 @@ class GaussianPolicy(BaseNetwork):
         entropies = -log_probs.sum(dim=1, keepdim=True)
 
         return actions, entropies, torch.tanh(means)
+
+class DeterministicPolicy(BaseNetwork):
+    def __init__(self, state_dim, action_dim, hidden_units=[256, 256]):
+        super().__init__()
+        
+        # last layer is mean only, not mean and log_std
+        self.net = create_linear_network(
+            input_dim=state_dim,
+            output_dim=action_dim,
+            hidden_units=hidden_units)
+
+    def forward(self, states):
+        # DDPG Actor: State -> Action (tanh for -1 ~ 1 clipping)
+        return torch.tanh(self.net(states))

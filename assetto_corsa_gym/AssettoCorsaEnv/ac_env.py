@@ -532,28 +532,39 @@ class AssettoCorsaEnv(Env, gym_utils.EzPickle):
         #
         #   Check episode termination
         #
-        # end of episode
         done = 0
         buf_infos = {}
         buf_infos['terminated'] = False  # used by TD MPC
         buf_infos['TimeLimit.truncated'] = False
 
+        # [1] Lap ended by Assetto Corsa
         if state["done"]:
-            ### TODO lap ended by AC.. se what to do here
             logger.info("Terminate. Lap ended by Assetto Corsa")
             done = 1
 
+        # [2] Collision Detection (Sensor-based)
+        if self.enable_sensors and 'sensors' in state:
+            min_sensor_dist = min(state['sensors'])
+            if min_sensor_dist < 0.1:  # 0.1m threshold for collision
+                logger.info(f"Collision Detected! Min sensor distance: {min_sensor_dist:.3f}m")
+                buf_infos['terminated'] = True
+                done = 1
+
+        # [3] Going backwards
         if state['going_backwards'] > 0.:
             logger.info("Terminate episode. Going backwards")
             buf_infos['terminated'] = True
             done = 1
 
+        # [4] Out of Track
         if self.enable_out_of_track_termination and state['out_of_track']:
             logger.info("Terminate episode. is_out_of_track")
-            logger.info(f"out_of_track. N wheels out: {state['numberOfTyresOut']}. LapDist: {state['LapDist']} x: {x:.2f} y: {y:.2f}")
+            logger.info(f"out_of_track. N wheels out: {state['numberOfTyresOut']}. "
+                       f"LapDist: {state['LapDist']} x: {x:.2f} y: {y:.2f}")
             buf_infos['terminated'] = True
             done = 1
 
+        # [5] Max episode steps
         if self._max_episode_steps is not None:
             if self.ep_steps > self._max_episode_steps:
                 logger.info(f"Terminate episode. Max steps {self.ep_steps}/{self._max_episode_steps}")
@@ -565,19 +576,17 @@ class AssettoCorsaEnv(Env, gym_utils.EzPickle):
             done = 1
             buf_infos['TimeLimit.truncated'] = True
 
-        # Episode terminates if the progress of agent is small
+        # [6] Low speed termination
         if self.enable_low_speed_termination and state['speed'] < TERMINAL_LIMIT_PROGRESS_SPEED:
             self.termination_counter -= 1
             if self.termination_counter <= 0:
                 logger.info("Race stopped. Speed too low")
                 buf_infos['terminated'] = True
                 done = 1
-            # else:
-            #     logger.info(f"Low speed. Will terminate in {self.termination_counter}...")
         else:
             self.termination_counter = int(TERMINAL_JUDGE_TIMEOUT * self.ctrl_rate)
 
-        # check gap
+        # [7] Gap check
         if self.max_gap and np.abs(gap) > self.max_gap:
             logger.info(f"Race stopped. Gap too big ({gap})")
             done = 1

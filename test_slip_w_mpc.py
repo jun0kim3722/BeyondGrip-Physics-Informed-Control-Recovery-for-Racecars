@@ -1,3 +1,6 @@
+# python train_ddpg.py --target_speed 60 --flick_intensity 0.4 \
+#     AssettoCorsa.track=monza AssettoCorsa.car=bmw_z4_gt3 \
+#     Agent.num_steps=100000
 import os
 import sys
 import argparse
@@ -39,22 +42,34 @@ class DrivingState(Enum):
     RECOVERY = 2      # Control Recovery (Custom Controller)
 
 class ScenarioSupervisor:
-    def __init__(self, normal_agent, env, mpc, target_speed_kmh=100.0):
+    def __init__(self, normal_agent, env, mpc, target_speed_kmh=100.0, 
+                 flick_intensity=1.0):
+        """
+        Args:
+            normal_agent: Agent for normal driving (APPROACH phase)
+            env: Environment
+            mpc: MPC controller
+            target_speed_kmh: Target speed in km/h
+            flick_intensity: Flick intensity 0.0-1.0 (controls slip severity)
+        """
         self.state = DrivingState.APPROACH
         self.normal_agent = normal_agent
         self.env = env  # Direct access to environment for telemetry
         self.mpc = mpc
-        self.target_speed_ms = target_speed_kmh / 3.6 # Simulation uses m/s
+        
+        # Training parameters
+        self.target_speed_kmh = target_speed_kmh
+        self.target_speed_ms = target_speed_kmh / 3.6
+        self.flick_intensity = flick_intensity
+        self.slip_threshold_rad = 0.20
+        self.feint_duration = 7
+        self.max_destabilize_steps = 20
 
-        # Slip detection parameters
-        self.slip_threshold_rad = 0.20  # 0.15 rad
-        self.feint_duration = 7  # Feint duration (must match _get_destabilize_action)
         self.min_flick_duration = 7  # Minimum steps to maintain flick before checking slip
         self.slip_confirm_count = 2  # Consecutive slip detections needed
         
         # Set Destabilize
         self.destabilize_step_count = 0
-        self.max_destabilize_steps = 20  # Safety fallback
         self.slip_detected = False
         self.consecutive_slip_count = 0  # Counter for consecutive slip detections
         
@@ -139,24 +154,26 @@ class ScenarioSupervisor:
 
         # Phase 1: Feint (NO slip detection during this phase!)
         if self.destabilize_step_count <= self.feint_duration:
-            steer = +0.5 # Move right
+            steer = +0.5 * self.flick_intensity  # Move right (scaled by intensity)
             gas = 0.0
             brake = 0.0
             
             if self.destabilize_step_count == 1:
                 logger.info(">>> [DESTABILIZE] Phase 1: Feint (Turn Right, Lift-off)")
+                logger.info(f"    Feint intensity: {steer:.2f}")
                 logger.info(f"    Slip detection will start after step {self.feint_duration}")
                 
             return np.array([steer, gas, brake])
             
         # Phase 2: Initiation (slip detection is ACTIVE now)
         else:
-            steer = -1.0
-            gas = 1.0    # gas (induce rear slip)
+            steer = -1.0 * self.flick_intensity  # Scale by curriculum level
+            gas = 1.0 * self.flick_intensity     # Gas also scaled
             brake = 0.0
             
             if self.destabilize_step_count == self.feint_duration + 1:
                 logger.info(">>> [DESTABILIZE] Phase 2: Flick & Power (Turn Left + Full Gas)")
+                logger.info(f"    Flick intensity: {self.flick_intensity:.2f} (Steer: {steer:.2f}, Gas: {gas:.2f})")
                 logger.info(f"    Slip detection will start after step {self.feint_duration + self.min_flick_duration}")
             
             # Log telemetry periodically during flick phase
@@ -173,7 +190,6 @@ class ScenarioSupervisor:
     def _get_recovery_action(self, obs):
         self.vehicle_state = self.env.state if hasattr(self.env, 'state') else {}
         
-        # [Temporary] Use pre-trained agent for recovery to test the system
         action, _ = self.normal_agent._algo.exploit(obs)
         
         # Log recovery telemetry periodically

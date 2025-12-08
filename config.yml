@@ -8,7 +8,7 @@ seed: 0
 # wandb
 disable_wandb: False
 wandb_entity: null  # user
-wandb_project: sac
+wandb_project: ddpg
 wandb_silent: False
 exp_name: null
 task_title: null
@@ -53,7 +53,7 @@ AssettoCorsa:
   gap_const: 12.
   eval_number_of_laps: 4    # including out lap which is incomplete
   save_lap_csv: False
-  remote_machine_ip: "192.168.4.105" #"localhost"   # "192.168.0.1" # "localhost"
+  remote_machine_ip: "localhost" #"localhost"   # "192.168.0.1" # "localhost"
   ego_server_port: 2345
   opponents_server_port: 2346
   simulation_management_server_port: 2347

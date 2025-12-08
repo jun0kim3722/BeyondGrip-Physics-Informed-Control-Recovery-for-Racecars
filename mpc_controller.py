@@ -276,3 +276,27 @@ class MPC_controller:
         # print("CTR: ", steering, throttle, brake)
 
         return np.array([steering, throttle, brake])
+    
+    def reset(self):
+        """
+        Resets the MPC controller state and solver memory.
+        This is crucial for restarting the episode without warm-start errors.
+        """
+        # 1. Reset current control inputs
+        self.curr_steering = 0
+        self.curr_throttle = 0
+        self.curr_brake = 0
+
+        # 2. Reset state variables (x0)
+        x0 = np.zeros((4, 1))
+        self.mpc.x0 = x0
+        self.sim.x0 = x0
+        self.estimator.x0 = x0
+
+        # 3. remove do_mpc history
+        self.mpc.reset_history()
+        self.sim.reset_history()
+        self.estimator.reset_history()
+
+        # 4. Reset solver's initial guess
+        self.mpc.set_initial_guess()
