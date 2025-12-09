@@ -1,4 +1,5 @@
 import os
+import time
 
 if os.name == 'posix':
     try:
@@ -103,3 +104,12 @@ class Controls(object):
 
         joystickPosition = self.vj.generateJoystickPosition(wAxisX= xPos, wAxisY=yPos, wAxisZ=zPos, lButtons=onButtons)
         self.vj.update(joystickPosition)
+
+    def restart(self):
+        self.vj.setButton(8, 1) # 8 pressed
+        time.sleep(0.1)
+        self.vj.setButton(8, 0) # 8 released
+
+        self.vj.setButton(7, 1) # 7 pressed
+        time.sleep(0.1)
+        self.vj.setButton(7, 0) # 7 released

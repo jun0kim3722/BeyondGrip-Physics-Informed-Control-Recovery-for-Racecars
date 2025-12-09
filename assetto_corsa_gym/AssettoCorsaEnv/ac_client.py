@@ -162,6 +162,9 @@ class Client():
         self.controls.set_defaults()
         self.setup_connection()
 
+    def restart(self):
+        self.controls.restart_sequence()
+
     def close(self):
         # Send disconnect message
         if not self.vjoy_executed_by_server:
@@ -274,3 +277,6 @@ class DriverControls(dict):
 
     def export(self):
         return json.dumps(self)
+    
+    def restart_sequence(self):
+        self.local_controls.restart()

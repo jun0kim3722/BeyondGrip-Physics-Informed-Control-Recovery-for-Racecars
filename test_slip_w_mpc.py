@@ -71,6 +71,11 @@ class ScenarioSupervisor:
         # Record state history with timestamp and state label
         self._record_state()
 
+        # action = self.mpc.get_action(self.vehicle_state)
+        # return action
+
+        # return self._get_recovery_action(obs)
+
         # Get current speed from vehicle state
         current_speed = self.vehicle_state.get('speed', info.get('speed', 0.0))
 
@@ -86,12 +91,10 @@ class ScenarioSupervisor:
             # Use classic control
             # action, _ = self.normal_agent._algo.exploit(obs)
             action = self.mpc.get_action(self.vehicle_state)
-            print(action)
             return action
 
         # [Step 2] Destabilize: Induce Slip
         elif self.state == DrivingState.DESTABILIZE:
-            
             min_steps_before_check = self.feint_duration + self.min_flick_duration
             
             # Only check slip after feint + min flick duration
@@ -123,7 +126,10 @@ class ScenarioSupervisor:
 
         # [Step 3] Recovery: Control Recovery
         elif self.state == DrivingState.RECOVERY:
-            return self._get_recovery_action(obs)
+            # return self._get_recovery_action(obs)
+            print("******************** MPC RECOVERY ****************")
+            action = self.mpc.get_action(self.vehicle_state)
+            return action
 
         return np.zeros(3)
 
@@ -308,7 +314,8 @@ def main():
     logger.info(">>> Simulation Loop Started")
 
     try:
-        while not done:
+        # while not done:
+        while True:
             # (1) Get action from Supervisor (uses env.state for telemetry)
             action = supervisor.get_action(obs, info)
 

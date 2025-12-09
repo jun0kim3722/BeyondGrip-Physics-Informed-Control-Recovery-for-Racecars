@@ -5,6 +5,10 @@ from scipy.interpolate import CubicSpline
 from scipy.signal import savgol_filter
 import matplotlib.pyplot as plt
 import do_mpc
+
+import logging
+logging.getLogger('do_mpc').setLevel(logging.WARNING)
+
 import casadi as ca
 
 def compute_velocity_profile(
@@ -152,7 +156,22 @@ class MPC_controller:
 
     def _build_mpc(self, model, t_step=0.01):
         mpc = do_mpc.controller.MPC(model)
-        mpc.set_param(n_horizon=self.n_horizon, t_step=t_step, u_deriv={'delta': False, 'a': True})
+        # mpc.set_param(n_horizon=self.n_horizon, t_step=t_step, u_deriv={'delta': False, 'a': True})
+
+        mpc.set_param(
+            n_horizon = self.n_horizon,
+            t_step = t_step,
+            u_deriv = {'delta': False, 'a': True},
+            nlpsol_opts = {
+                'ipopt': {
+                    'print_level': 0,
+                    'sb': 'yes',
+                    'print_timing_statistics': 'no',
+                    'print_user_options': 'no'
+                },
+                'print_time': 0
+            }
+        )
 
         x = model.x['x']
         y = model.x['y']
