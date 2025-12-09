@@ -684,7 +684,7 @@ class AssettoCorsaEnv(Env, gym_utils.EzPickle):
         r = r.reshape(-1)  # [N, 1] -> [N]
         return r
     
-    def get_physics_reward(self, state, load_W=0.5, grip_W=0.2, steer_W=0.5, slip_thresh=0.07, mu=1.2):
+    def get_physics_reward(self, state, load_W=0.5, grip_W=0.2, steer_W=0.2, slip_thresh=0.1, mu=1.2):
         steer = state['steerAngle'] * (1 - self.norm_steer_at_max)
 
         slip_angle_fl = state['SlipAngle_fl']
