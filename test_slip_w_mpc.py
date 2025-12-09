@@ -1,6 +1,3 @@
-# python train_ddpg.py --target_speed 60 --flick_intensity 0.4 \
-#     AssettoCorsa.track=monza AssettoCorsa.car=bmw_z4_gt3 \
-#     Agent.num_steps=100000
 import os
 import sys
 import argparse
@@ -43,27 +40,32 @@ class DrivingState(Enum):
 
 class ScenarioSupervisor:
     def __init__(self, normal_agent, env, mpc, target_speed_kmh=100.0, 
-                 flick_intensity=1.0):
+                 curriculum_level=None):
         """
         Args:
             normal_agent: Agent for normal driving (APPROACH phase)
             env: Environment
             mpc: MPC controller
-            target_speed_kmh: Target speed in km/h
-            flick_intensity: Flick intensity 0.0-1.0 (controls slip severity)
+            target_speed_kmh: Target speed (will be overridden by curriculum if provided)
+            curriculum_level: DifficultyLevel object from CurriculumManager (optional)
         """
         self.state = DrivingState.APPROACH
         self.normal_agent = normal_agent
         self.env = env  # Direct access to environment for telemetry
         self.mpc = mpc
         
-        # Training parameters
-        self.target_speed_kmh = target_speed_kmh
-        self.target_speed_ms = target_speed_kmh / 3.6
-        self.flick_intensity = flick_intensity
-        self.slip_threshold_rad = 0.20
-        self.feint_duration = 7
-        self.max_destabilize_steps = 20
+        # Curriculum support
+        self.curriculum_level = curriculum_level
+        if curriculum_level is not None:
+            self.apply_curriculum_level(curriculum_level)
+        else:
+            # Default parameters (no curriculum)
+            self.target_speed_kmh = target_speed_kmh
+            self.target_speed_ms = target_speed_kmh / 3.6
+            self.slip_threshold_rad = 0.20
+            self.feint_duration = 7
+            self.flick_intensity = 1.0  # Full intensity
+            self.max_destabilize_steps = 20
 
         self.min_flick_duration = 7  # Minimum steps to maintain flick before checking slip
         self.slip_confirm_count = 2  # Consecutive slip detections needed
@@ -78,6 +80,26 @@ class ScenarioSupervisor:
         # Vehicle state history for logging and slip analysis
         self.state_history = []
         self.step_counter = 0
+    
+    def apply_curriculum_level(self, level):
+        """
+        커리큘럼 난이도 레벨 적용
+        
+        Args:
+            level: DifficultyLevel object
+        """
+        self.curriculum_level = level
+        self.target_speed_kmh = level.target_speed_kmh
+        self.target_speed_ms = level.target_speed_kmh / 3.6
+        self.slip_threshold_rad = level.slip_threshold
+        self.feint_duration = level.feint_duration
+        self.flick_intensity = level.flick_intensity
+        self.max_destabilize_steps = level.max_destabilize_steps
+        
+        logger.info(f"Applied curriculum level: {level}")
+        logger.info(f"  Target Speed: {self.target_speed_kmh} km/h")
+        logger.info(f"  Slip Threshold: {self.slip_threshold_rad} rad")
+        logger.info(f"  Flick Intensity: {self.flick_intensity:.2f}")
 
     def get_action(self, obs, info):
         # Get vehicle telemetry directly from env.state (updated via UDP)
@@ -154,6 +176,7 @@ class ScenarioSupervisor:
 
         # Phase 1: Feint (NO slip detection during this phase!)
         if self.destabilize_step_count <= self.feint_duration:
+            # Feint intensity는 flick_intensity의 절반 정도로 설정
             steer = +0.5 * self.flick_intensity  # Move right (scaled by intensity)
             gas = 0.0
             brake = 0.0
@@ -167,6 +190,7 @@ class ScenarioSupervisor:
             
         # Phase 2: Initiation (slip detection is ACTIVE now)
         else:
+            # Flick intensity 적용 (커리큘럼에 따라 조정됨)
             steer = -1.0 * self.flick_intensity  # Scale by curriculum level
             gas = 1.0 * self.flick_intensity     # Gas also scaled
             brake = 0.0
@@ -190,6 +214,7 @@ class ScenarioSupervisor:
     def _get_recovery_action(self, obs):
         self.vehicle_state = self.env.state if hasattr(self.env, 'state') else {}
         
+        # [Temporary] Use pre-trained agent for recovery to test the system
         action, _ = self.normal_agent._algo.exploit(obs)
         
         # Log recovery telemetry periodically

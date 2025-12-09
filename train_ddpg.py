@@ -1,3 +1,6 @@
+# python train_ddpg.py --target_speed 60 --flick_intensity 0.4 \
+#     AssettoCorsa.track=monza AssettoCorsa.car=bmw_z4_gt3 \
+#     Agent.num_steps=100000
 import os
 import sys
 import argparse
