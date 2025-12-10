@@ -262,7 +262,8 @@ def main():
 
         while not done:
             current_speed_kmh = env.state['speed'] * 3.6
-            
+            # By Default Do no allow episode termination due to slip recovery
+            env.enable_slip_recovery = False # this line is not really necessary because the flag is to False on env.reset()
             if phase == "APPROACH":
                 action = mpc.get_action(env.state) # MPC
                 
@@ -276,6 +277,7 @@ def main():
                     phase = "RECOVERY"
 
             elif phase == "RECOVERY":
+                env.enable_slip_recovery = True # enable termination due to slip recovery
                 if total_steps < agent._start_steps:
                     action = env.action_space.sample()
                 else:
