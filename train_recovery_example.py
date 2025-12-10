@@ -1,5 +1,5 @@
 # In order to use the recovery environmet import the following that is all that is necessary
-from AssettoCorsaEnv.recovery_env import RecoveryAssettoEnv
+from assetto_corsa_gym.AssettoCorsaEnv.recovery_ac_env import RecoveryAssettoEnv
 
 
 # Other imports that you need such as the algoirhtms, etc.
