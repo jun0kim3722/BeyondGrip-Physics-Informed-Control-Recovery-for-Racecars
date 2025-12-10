@@ -78,7 +78,7 @@ def make_client_only(config):
 #     config = ModuleConfig(cfg.AssettoCorsa)
 #     return config.make_env(output_path=work_dir, ac_configs_path=ac_configs_path)
 
-def make_ac_env(cfg, work_dir=None, ac_configs_path=None, env_class=None):
+def make_ac_env(cfg, work_dir=None, ac_configs_path=None, env_class=None, env_kwargs=None):
     if work_dir is None:
         work_dir = cfg.work_dir.as_posix()
 
@@ -87,5 +87,6 @@ def make_ac_env(cfg, work_dir=None, ac_configs_path=None, env_class=None):
     return config.make_env(
         output_path=work_dir,
         ac_configs_path=ac_configs_path,
-        env_class=env_class
+        env_class=env_class,
+        env_kwargs=env_kwargs
     )
