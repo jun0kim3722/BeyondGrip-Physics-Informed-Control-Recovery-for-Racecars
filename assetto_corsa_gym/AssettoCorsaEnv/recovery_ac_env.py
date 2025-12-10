@@ -135,11 +135,13 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
         # speed_bonus = np.clip(speed_bonus, 0.0, 0.03)
         # r += speed_bonus
 
+
+        # NO REWARD if speed is very low (happens becasue the car stalls on a wall), applied after the EMA updates.
         if(state["local_velocity_x"] < 5):
             return np.array([-0.1]).reshape(-1)
 
 
-        # return as array for AC env
+        # standard reward.
         return np.array([r]).reshape(-1)
 
 
@@ -155,7 +157,6 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
 
         # successfully recovered from a slip
         if info["slip_recovered"]:
-            # ---------- 1. Exit speed ----------
             v_exit = float(state["speed"])
 
             # heading stuff
@@ -165,7 +166,6 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
             # delta = car_yaw - ref_yaw
             # delta_heading = (delta + np.pi) % (2*np.pi) - np.pi
 
-            # ---------- 3. Curvature ----------
             LOCAL_LA_DIST = 40.0 # look ahead 40 meters ahead to calculate curvature
             # curv_vec = self.ref_lap.get_curvature_segment(
             #     dist=state["LapDist"],
@@ -174,9 +174,9 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
             # )
 
             curv_vec = self.ref_lap.get_curvature_segment(
-            dist=state["LapDist"],
-            LA_dist=LOCAL_LA_DIST,
-            vector_size=5
+                dist=state["LapDist"],
+                LA_dist=LOCAL_LA_DIST,
+                vector_size=5
             )
             kappa = np.mean(np.abs(curv_vec))
             #kappa = float(curv_vec[0])
