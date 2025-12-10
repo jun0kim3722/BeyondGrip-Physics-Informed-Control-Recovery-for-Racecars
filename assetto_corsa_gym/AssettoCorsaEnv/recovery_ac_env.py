@@ -12,11 +12,16 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
         self.recovery_time = recovery_time
         self.required_steps = int(self.ctrl_rate * recovery_time)
         self.slip_counter = 0
+        self.slip_recovery_mode = False
+
 
     def reset(self):
         self.slip_counter = 0
         self.ema_slip = None
         self.slip_history = []
+
+        self.slip_recovery_mode = False
+
         return super().reset()
 
     def expand_state(self, state):
@@ -41,17 +46,32 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
         slip_rr = abs(state["SlipAngle_rr"])
         max_slip = max(slip_rl, slip_rr)
 
-        if max_slip < self.slip_threshold:
-            self.slip_counter += 1
-        else:
-            self.slip_counter = 0
 
-        if self.slip_counter >= self.required_steps:
-            state["done"] = 1
-            buf_infos["terminated"] = True # this is used by TD MPC which is not even used, but whatever
-            buf_infos["slip_recovered"] = True # signal to let us know that it done = 1 
+        # only terminate if slip_recovery_mode is on
+        if self.slip_recovery_mode:
+            if max_slip < self.slip_threshold:
+                self.slip_counter += 1
+            else:
+                self.slip_counter = 0
+
+            if self.slip_counter >= self.required_steps:
+                state["done"] = 1
+                buf_infos["terminated"] = True
+                buf_infos["slip_recovered"] = True
         else:
             buf_infos["slip_recovered"] = False
+
+        # if max_slip < self.slip_threshold:
+        #     self.slip_counter += 1
+        # else:
+        #     self.slip_counter = 0
+
+        # if self.slip_counter >= self.required_steps:
+        #     state["done"] = 1
+        #     buf_infos["terminated"] = True # this is used by TD MPC which is not even used, but whatever
+        #     buf_infos["slip_recovered"] = True # signal to let us know that it done = 1 
+        # else:
+        #     buf_infos["slip_recovered"] = False
 
         return state, buf_infos
     
