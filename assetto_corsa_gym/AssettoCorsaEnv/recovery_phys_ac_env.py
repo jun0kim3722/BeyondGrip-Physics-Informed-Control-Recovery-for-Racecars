@@ -1,4 +1,5 @@
-from AssettoCorsaEnv.recovery_env import RecoveryAssettoEnv
+from AssettoCorsaEnv.recovery_ac_env import RecoveryAssettoEnv
+
 from AssettoCorsaEnv.ac_env import logger
 
 import numpy as np
