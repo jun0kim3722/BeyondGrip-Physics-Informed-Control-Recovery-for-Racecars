@@ -31,6 +31,6 @@ class PhysicsRecoveryEnv(RecoveryAssettoEnv):
 
         return np.array([r]).reshape(-1)
     
-    # Keeps the same terminal reward. See recovery_ac_env.py for range of terminal reward.
+    # Keeps the same terminal reward do not overide it. See recovery_ac_env.py for range of terminal reward.
     # def terminal_reward(self, state, info):
 
