@@ -20,8 +20,6 @@ import AssettoCorsaEnv.sensors_ray_casting as sensors_ray_casting
 from AssettoCorsaEnv.sensors_ray_casting import MAX_RAY_LEN
 from AssettoCorsaEnv.gap import get_gap
 
-import matplotlib.pyplot as plt
-
 import torch
 
 import logging
@@ -45,33 +43,6 @@ TERMINAL_LIMIT_PROGRESS_SPEED  = 1.0  # [m/s], episode terminates if car is runn
 TERMINAL_JUDGE_TIMEOUT = 10.       # If after this number of seconds still no progress, terminate the episode. In seconds
 
 TOP_SPEED_MS = 80.
-
-def tire_model(slip_ratio, slip_angle, Fz, mu=1.1):
-    # stiffness grows with load
-    Cx = 10.0 * Fz
-    C_alpha = 15.0 * Fz
-
-    # pure longitudinal
-    Fx = Cx * slip_ratio
-
-    # lateral force with peak and dropoff
-    B = C_alpha / max(mu * Fz, 1e-6)
-    C = 1.3
-    D = mu * Fz
-    Fy = D * np.sin(C * np.arctan(B * slip_angle))
-
-    # soft falloff beyond peak
-    Fy *= np.exp(-0.12 * abs(slip_angle))
-
-    # combined slip
-    limit = mu * Fz
-    demand = np.sqrt(Fy**2 + Fx**2)
-    if demand > limit:
-        scale = limit / demand
-        Fx *= scale
-        Fy *= scale
-
-    return Fx, Fy
 
 def get_date_timestemp():
     return datetime.now().strftime('%Y%m%d_%H%M%S.%f')[:-3]
@@ -205,6 +176,18 @@ class AssettoCorsaEnv(Env, gym_utils.EzPickle):
         'SlipAngle_fr',
         'SlipAngle_rl',
         'SlipAngle_rr',
+        # 'tyre_slip_ratio_fl',
+        # 'tyre_slip_ratio_fr',
+        # 'tyre_slip_ratio_rl',
+        # 'tyre_slip_ratio_rr',
+        # 'wheel_speed_rr',
+        # 'wheel_speed_rl',
+        # 'wheel_speed_fr',
+        # 'wheel_speed_fl',
+        # 'Dy_rr',
+        # 'Dy_rl',
+        # 'Dy_fr',
+        # 'Dy_fl',
     ]
 
     obs_extra_enabled_channels = [
@@ -216,21 +199,9 @@ class AssettoCorsaEnv(Env, gym_utils.EzPickle):
         'brakeStatus',
         'world_position_x',
         'world_position_y',
-
-        'yaw',
-        'pitch',
-        'roll',
-
-        'Dy_rr',
-        'Dy_rl',
-        'Dy_fr',
-        'Dy_fl',
-
-        'fl_wheel_load',
-        'fr_wheel_load',
-        'rl_wheel_load',
-        'rr_wheel_load',
+        'yaw'
     ]
+
 
     def __init__(self, config,
                  output_path: None,
@@ -423,8 +394,6 @@ class AssettoCorsaEnv(Env, gym_utils.EzPickle):
         self.metadata = {'render.modes': ['human', 'rgb_array'], 'video.frames_per_second': 30}
 
         self.is_metaworld = False
-        self.prev_state = None
-        plt.figure()
 
     def set_reset_state(self, send_reset_at_start):
         self.send_reset_at_start = send_reset_at_start
@@ -482,27 +451,6 @@ class AssettoCorsaEnv(Env, gym_utils.EzPickle):
         state = self.client.step_sim()
         state["timestamp_env"] = time.perf_counter()
 
-        # self.update_derivative_channel(state)
-
-        yaw = state['yaw']
-        x = state['tyreContactHeading_FL_x']
-        y = state['tyreContactHeading_FL_y']
-        fl_angle = np.arctan2(y, x) - yaw
-
-        x = state['tyreContactHeading_FR_x']
-        y = state['tyreContactHeading_FR_y']
-        fr_angle = np.arctan2(y, x) - yaw
-
-        # breakpoint()
-        # plt.plot(self.ep_steps, np.rad2deg(fl_angle), '^', color='r')
-        # plt.plot(self.ep_steps, np.rad2deg(fr_angle), '.', color='b')
-        # plt.plot(self.ep_steps, state['deriv_pitch'] * 10, '^', color='r')
-        # plt.plot(self.ep_steps, state['pitch'], '.', color='b')
-
-        # if self.ep_steps == 500:
-        #     plt.show()
-
-
         self.state, buf_infos = self.expand_state(state)
 
         # add the current absolute actions to the state
@@ -519,8 +467,8 @@ class AssettoCorsaEnv(Env, gym_utils.EzPickle):
         #
         #   Reward
         #
-        self.get_physics_reward(self.state)
-        self.state["reward"] = self.get_reward(self.state, actions_diff).item()
+        #self.state["reward"] = self.get_reward(self.state, actions_diff).item()
+        self.state["reward"] = self.get_reward(self.state, actions_diff, buf_infos).item()
 
         if (self.ep_steps % 50) == 0:
             logger.debug(f't: {self.ep_steps} speed: {state["speed"]:.2f}, oot: {state["out_of_track"]} '
@@ -533,18 +481,6 @@ class AssettoCorsaEnv(Env, gym_utils.EzPickle):
         self.ep_reward += self.state["reward"]
         self.states.append(self.state.copy())
         return obs, self.state["reward"], self.state["done"], buf_infos
-
-    def update_derivative_channel(self, state):
-        if self.prev_state is not None:
-            for channel in self.prev_obs_channels:
-                deriv = (state[channel] - self.prev_state[channel])
-                state[f'deriv_{channel}'] = deriv
-
-        else:
-            for channel in self.prev_obs_channels:
-                state[f'deriv_{channel}'] = 0.0
-        
-        self.prev_state = state.copy()
 
     def expand_state(self, state):
         state["currentTime"] = state["currentTime"] / 1000.
@@ -668,7 +604,7 @@ class AssettoCorsaEnv(Env, gym_utils.EzPickle):
     def get_extra_obs_index(self, channel_name):
         return self.obs_extra_enabled_channels.index(channel_name)
 
-    def get_reward(self, state, actions_diff):
+    def get_reward(self, state, actions_diff, info):
         speed = 3.6 * np.array(state['speed'])
         out_of_track = state["out_of_track_calc"]
         dist_to_border = state["dist_to_border"]
@@ -683,86 +619,12 @@ class AssettoCorsaEnv(Env, gym_utils.EzPickle):
             r -= action_difference_penalty * self.penalize_actions_diff_coef
         r = r.reshape(-1)  # [N, 1] -> [N]
         return r
-    
-    def get_physics_reward(self, state, load_W=0.5, grip_W=0.2, steer_W=0.2, slip_thresh=0.1, mu=1.2):
-        steer = state['steerAngle'] * (1 - self.norm_steer_at_max)
 
-        slip_angle_fl = state['SlipAngle_fl']
-        slip_angle_fr = state['SlipAngle_fr']
-        slip_angle_rl = state['SlipAngle_rl']
-        slip_angle_rr = state['SlipAngle_rr']
-
-        front_slip_angle = (slip_angle_fl + slip_angle_fr) / 2.0
-        rear_slip_angle = (slip_angle_rl + slip_angle_rr) / 2.0
-        abs_front = np.abs(front_slip_angle)
-        abs_rear = np.abs(rear_slip_angle)
-        total_slip = abs_front + abs_rear + 1e-6
-        os_score = abs_rear / total_slip 
-        us_score = abs_front / total_slip
-
-        fl_load = state['fl_wheel_load']
-        fr_load = state['fr_wheel_load']
-        rl_load = state['rl_wheel_load']
-        rr_load = state['rr_wheel_load']
-        front_load = fl_load + fr_load
-        rear_load = rl_load + rr_load
-        total_load = front_load + rear_load
-        front_load_ratio = front_load / max(total_load, 1e-6)
-        rear_load_ratio = rear_load / max(total_load, 1e-6)
-
-        fl_slip_ratio = state['tyre_slip_ratio_fl']
-        fr_slip_ratio = state['tyre_slip_ratio_fr']
-        rl_slip_ratio = state['tyre_slip_ratio_rl']
-        rr_slip_ratio = state['tyre_slip_ratio_rr']
-
-        Fx_fl, Fy_fl = tire_model(fl_slip_ratio, slip_angle_fl, fl_load)
-        Fx_fr, Fy_fr = tire_model(fr_slip_ratio, slip_angle_fr, fr_load)
-        Fx_rl, Fy_rl = tire_model(rl_slip_ratio, slip_angle_rl, rl_load)
-        Fx_rr, Fy_rr = tire_model(rr_slip_ratio, slip_angle_rr, rr_load)
-        rear_force = abs(Fy_rl + Fy_rr)
-        front_force = abs(Fy_fl + Fy_fr)
-
-        reward = 0.0
-        if abs_front > slip_thresh and abs_front > abs_rear:
-            # understeer
-            reward += us_score * load_W * (front_load_ratio - rear_load_ratio) # Weight to front
-            print(f"UD Load: ", us_score * load_W * (front_load_ratio - rear_load_ratio))
-
-            # increase front grip
-            front_combined_force = (np.sqrt(Fx_fl**2 + Fy_fl**2) + np.sqrt(Fx_fr**2 + Fy_fr**2)) / 2.0
-            reward += us_score * grip_W * front_combined_force / (mu * (fl_load + fr_load) + 1e-6) # reward for high front grip
-            print(f"UD Grip: ", us_score * grip_W * front_combined_force / (mu * (fl_load + fr_load) + 1e-6))
-        
-        elif abs_rear > slip_thresh and abs_rear > abs_front:
-            # oversteer
-            reward += os_score * load_W * (rear_load_ratio - front_load_ratio) # Weight to rear
-            print(f"OD Load: ", os_score * load_W * (rear_load_ratio - front_load_ratio))
-
-            front_combined_force = (np.sqrt(Fx_rl**2 + Fy_rl**2) + np.sqrt(Fx_rr**2 + Fy_rr**2)) / 2.0
-            reward += os_score * grip_W * front_combined_force / (mu * (rl_load + rr_load) + 1e-6) # penalize low rear grip
-            print(f"OD Grip: ", os_score * grip_W * front_combined_force / (mu * (rl_load + rr_load) + 1e-6))
-
-            # steering correction
-            correct_dir = (np.sign(rear_slip_angle)) * steer
-            if correct_dir > 0.0: # counter steering
-                reward += os_score * steer_W * np.tanh(2.0 * correct_dir)
-                print(f"OD Steer correction: ", os_score * steer_W * np.tanh(2.0 * correct_dir))
-
-            else: # understeer inducing
-                reward += os_score * steer_W * np.tanh(np.clip((rear_force  -  front_force), -20.0, 20.0))
-                print(f"OD Steer understeer: ", os_score * steer_W * np.tanh(np.clip((rear_force  -  front_force), -20.0, 20.0)))
-
-        print(f"Total Physics Reward: {reward}\n\n")
-        return reward
-        
     def recover_car(self):
         logger.info("Recover car")
         self.client.controls.set_defaults()
         self.client.respond_to_server()
         self.client.simulation_management.send_reset()
-    
-    def restart_episode(self):
-        self.client.restart()
 
     def reset(self, seed=None, verbose=False):
         self.end_of_episode_stats()
