@@ -24,6 +24,9 @@ import common.misc as misc
 import common.logging_config as logging_config
 from mpc_controller import MPC_controller
 
+
+from assetto_corsa_gym.AssettoCorsaEnv.recovery_ac_env import RecoveryAssettoEnv
+
 # Set Logger 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ScenarioRunner")
