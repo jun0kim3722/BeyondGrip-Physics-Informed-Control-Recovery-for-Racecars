@@ -28,15 +28,36 @@ class ModuleConfig:
         this_file_path = os.path.abspath(os.path.dirname(__file__))
         self.ac_configs_path = os.path.join(this_file_path, "../AssettoCorsaConfigs")
 
-    def make_env(self, output_path, ac_configs_path=None):
+    # def make_env(self, output_path, ac_configs_path=None):
+    #     if ac_configs_path is None:
+    #         ac_configs_path = self.ac_configs_path
+    #     env = ac_env.AssettoCorsaEnv(self.config,
+    #                                  output_path=output_path,
+    #                                  ac_configs_path=ac_configs_path,
+    #                                  max_episode_steps=self.max_episode_steps,
+    #                                 )
+    #     return env
+
+
+    def make_env(self, output_path, ac_configs_path=None, env_class=None, env_kwargs=None):
         if ac_configs_path is None:
             ac_configs_path = self.ac_configs_path
-        env = ac_env.AssettoCorsaEnv(self.config,
+        
+        if env_class is None:
+            env_class = ac_env.AssettoCorsaEnv
+        
+        if env_kwargs is None:
+            env_kwargs = {}
+        
+        env = env_class(self.config,
                                      output_path=output_path,
                                      ac_configs_path=ac_configs_path,
                                      max_episode_steps=self.max_episode_steps,
+                                    **env_kwargs
                                     )
         return env
+
+
 
     def get_config(self):
         return self.config
@@ -45,14 +66,26 @@ def make_client_only(config):
     config = ModuleConfig(config)
     return Client(config.get_config())
 
-def make_ac_env(cfg, work_dir=None, ac_configs_path=None):
-    """
-    cfg: general configuration. This module will use the AssettoCorsa configuration (cfg.AssettoCorsa).
-    work_dir: path to the working directory where the logs (telemetry) will be saved
-    ac_configs_path: path to the AssettoCorsaConfigs folder containing the car and track configs.
-                     Default is None which will use the default path.
-    """
+# def make_ac_env(cfg, work_dir=None, ac_configs_path=None):
+#     """
+#     cfg: general configuration. This module will use the AssettoCorsa configuration (cfg.AssettoCorsa).
+#     work_dir: path to the working directory where the logs (telemetry) will be saved
+#     ac_configs_path: path to the AssettoCorsaConfigs folder containing the car and track configs.
+#                      Default is None which will use the default path.
+#     """
+#     if work_dir is None:
+#         work_dir = cfg.work_dir.as_posix()
+#     config = ModuleConfig(cfg.AssettoCorsa)
+#     return config.make_env(output_path=work_dir, ac_configs_path=ac_configs_path)
+
+def make_ac_env(cfg, work_dir=None, ac_configs_path=None, env_class=None):
     if work_dir is None:
         work_dir = cfg.work_dir.as_posix()
+
     config = ModuleConfig(cfg.AssettoCorsa)
-    return config.make_env(output_path=work_dir, ac_configs_path=ac_configs_path)
+
+    return config.make_env(
+        output_path=work_dir,
+        ac_configs_path=ac_configs_path,
+        env_class=env_class
+    )
