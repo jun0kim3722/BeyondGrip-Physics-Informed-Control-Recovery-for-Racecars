@@ -1,8 +1,11 @@
 from AssettoCorsaEnv.ac_env import AssettoCorsaEnv
+from assetto_corsa_gym.AssettoCorsaEnv.slip_initializer import SlipInitializer
+from mpc_controller import MPC_controller
 import numpy as np
 
 class RecoveryAssettoEnv(AssettoCorsaEnv):
     def __init__(self, *args,
+                 mpc = None,
                  slip_threshold=7, # measured in degrees as per ACPythonDocumentation.pdf
                  recovery_time=1,
                  **kwargs):
@@ -12,6 +15,56 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
         self.recovery_time = recovery_time
         self.required_steps = int(self.ctrl_rate * recovery_time)
         self.slip_counter = 0
+        self.mpc = mpc
+        self.slip_initializer = SlipInitializer(self, mpc)
+    
+
+    def reset(self, lap_dist=10.0, target_speed_ms=40.0, slip_params=None):
+        """
+        Reset AC → drive to lap_dist → reach speed → induce slip → hand off to RL.
+        """
+
+        # ----------------------------------------------------------------------
+        # 1. Normal AC reset (but DO NOT let AC run episode steps yet)
+        # ----------------------------------------------------------------------
+        # do this first
+        self.restart_episode()
+        obs = super().reset()
+
+        # Important: after reset, AC’s state dictionary is already updated.
+        self.state_after_super_reset = self.state.copy()
+
+        # ----------------------------------------------------------------------
+        # 2. Run MPC-controlled slip initializer (blocking / synchronous)
+        # ----------------------------------------------------------------------
+        # SlipInitializer must internally call: env.set_actions(), env.step(), etc.
+
+        if self.slip_initializer is not None:
+            self.slip_initializer.perform_slip(
+                lap_dist=lap_dist,
+                target_speed_ms=target_speed_ms,
+                slip_params=slip_params
+            )
+
+        # ----------------------------------------------------------------------
+        # 3. Now the slip has just been induced — return observation at this moment
+        # ----------------------------------------------------------------------
+        # self.state has now been updated by the slip_initializer's final step
+        obs, actions_diff = self.get_obs(self.state, self.states)
+
+        # ----------------------------------------------------------------------
+        # 4. Clear internal buffers for dense reward
+        # ----------------------------------------------------------------------
+        self.slip_counter = 0
+        self.reward_step = 0
+        self.ema_slip = None
+        self.slip_history = []
+
+        # You may want to store slip start location
+        self.slip_start_lap_dist = self.state.get("LapDist", 0.0)
+
+        return obs
+
 
     def expand_state(self, state):
         '''
