@@ -110,6 +110,8 @@ class Controls(object):
         time.sleep(0.1)
         self.vj.setButton(8, 0) # 8 released
 
+        time.sleep(0.5)
+        
         self.vj.setButton(7, 1) # 7 pressed
         time.sleep(0.1)
         self.vj.setButton(7, 0) # 7 released
