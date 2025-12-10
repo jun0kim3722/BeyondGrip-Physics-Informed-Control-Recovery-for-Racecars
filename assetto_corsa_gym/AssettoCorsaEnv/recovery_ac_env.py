@@ -69,14 +69,14 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
         MODIFY THIS FUNCTION
         """
 
-        if not hasattr(self.get_reward, "ema_slip"):
-            self.get_reward.ema_slip = None
+        if not hasattr(self, "ema_slip"):
+            self.ema_slip = None
 
-        if not hasattr(self.get_reward, "slip_history"):
-            self.get_reward.slip_history = []
+        if not hasattr(self, "slip_history"):
+            self.slip_history = []
 
-        if not hasattr(self.get_reward, "slip_window"):
-            self.get_reward.slip_window = 5  # At 25Hz, this is ~0.2 seconds.
+        if not hasattr(self, "slip_window"):
+            self.slip_window = 5  # At 25Hz, this is ~0.2 seconds.
 
 
         # only look at back wheel slips
@@ -86,16 +86,16 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
 
         # EMA smoothing
         alpha = 0.3
-        ema = self.get_reward.ema_slip
+        ema = self.ema_slip
         slip_smooth = slip_raw if ema is None else alpha * slip_raw + (1 - alpha) * ema
-        self.get_reward.ema_slip = slip_smooth
+        self.ema_slip = slip_smooth
 
 
         # slip window
-        hist = self.get_reward.slip_history
+        hist = self.slip_history
         hist.append(slip_smooth)
 
-        W = self.get_reward.slip_window
+        W = self.slip_window
         if len(hist) > W + 1:
             hist.pop(0)
 
