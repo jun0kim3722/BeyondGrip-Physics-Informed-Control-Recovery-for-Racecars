@@ -13,6 +13,12 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
         self.required_steps = int(self.ctrl_rate * recovery_time)
         self.slip_counter = 0
 
+    def reset(self):
+        self.slip_counter = 0
+        self.ema_slip = None
+        self.slip_history = []
+        return super().reset()
+
     def expand_state(self, state):
         '''
         Only put additional things you want in the expand_state here. The original function is already called.
