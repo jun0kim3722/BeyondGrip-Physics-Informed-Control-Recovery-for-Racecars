@@ -522,13 +522,7 @@ class AssettoCorsaEnv(Env, gym_utils.EzPickle):
         self.get_physics_reward(self.state)
         self.state["reward"] = self.get_reward(self.state, actions_diff, buf_infos).item()
 
-        if (self.ep_steps % 50) == 0:
-            logger.debug(f't: {self.ep_steps} speed: {state["speed"]:.2f}, oot: {state["out_of_track"]} '
-                         f's: {self.actions[0]:.2f} a: {self.actions[1]:.2f} b: {self.actions[2]:.2f} '
-                         f'reward: {state["reward"]:.3f} '
-                         f'done: {state["done"]:.0f} LapDist: {state["LapDist"]:.0f} gap: {state["gap"]:.1f} '
-                         )
-
+        
         self.info = buf_infos
         self.ep_reward += self.state["reward"]
         self.states.append(self.state.copy())
