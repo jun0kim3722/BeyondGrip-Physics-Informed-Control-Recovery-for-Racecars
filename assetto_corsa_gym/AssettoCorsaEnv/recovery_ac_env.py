@@ -1,5 +1,8 @@
 from AssettoCorsaEnv.ac_env import AssettoCorsaEnv
 import numpy as np
+import csv
+import os
+from datetime import datetime
 
 class RecoveryAssettoEnv(AssettoCorsaEnv):
     def __init__(self, *args,
@@ -14,6 +17,38 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
         self.slip_counter = 0
         self.slip_recovery_mode = False
 
+        self.early_termination = False
+
+
+
+        # Create a top-level reward log file (same folder as train_recovery.py)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        self.reward_log_path = os.path.join(
+            os.getcwd(), f"reward_log_{timestamp}.csv"
+        )
+
+        # Write header only once
+        with open(self.reward_log_path, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                "step",
+                "slip_deg",
+                "gap_m",
+                "slip_norm",
+                "gap_norm",
+                "slip_pen",
+                "gap_pen",
+                "brake_help",
+                "raw",
+                "reward",
+                "acc_x",
+                "speed_x"
+            ])
+
+        self._reward_step_counter = 0
+
+
 
     def reset(self):
         self.slip_counter = 0
@@ -21,6 +56,17 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
         self.slip_history = []
 
         self.slip_recovery_mode = False
+        self.early_termination = False
+
+        self._reward_step_counter = 0
+
+        slip_deg0 = 0
+        SLIP_GOOD = 10.0
+        self._slip_norm0 = slip_deg0 / SLIP_GOOD
+        self._max_slip_norm = self._slip_norm0
+        self._prev_slip_norm = self._slip_norm0
+        self._reward_step_counter = 0
+
 
         return super().reset()
 
@@ -49,15 +95,21 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
 
         # only terminate if slip_recovery_mode is on
         if self.slip_recovery_mode:
-            if max_slip < self.slip_threshold:
-                self.slip_counter += 1
-            else:
-                self.slip_counter = 0
-
-            if self.slip_counter >= self.required_steps:
+            if state["out_of_track"] and state["gap"] > 4:
                 state["done"] = 1
                 buf_infos["terminated"] = True
-                buf_infos["slip_recovered"] = True
+                buf_infos["slip_recovered"] = False
+                self.early_termination = True
+            else:
+                if max_slip < self.slip_threshold:
+                    self.slip_counter += 1
+                else:
+                    self.slip_counter = 0
+
+                if self.slip_counter >= self.required_steps and state["gap"] < 3:
+                    state["done"] = 1
+                    buf_infos["terminated"] = True
+                    buf_infos["slip_recovered"] = True
         else:
             buf_infos["slip_recovered"] = False
 
@@ -91,87 +143,72 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
 
 
     def dense_reward(self, state, actions_diff, info):
-        """
-        MODIFY THIS FUNCTION
-        """
+        if hasattr(self, "slip_recovery_mode") and not self.slip_recovery_mode:
+            return np.array([0.0], dtype=np.float32)
 
-        if not hasattr(self, "ema_slip"):
-            self.ema_slip = None
+        # ---------- basic features ----------
+        slip_deg = abs(max(state["SlipAngle_rl"], state["SlipAngle_rr"]))
+        gap_m    = abs(state.get("gap", 0.0))
+        speed_x  = state.get("local_velocity_x", 0.0)
 
-        if not hasattr(self, "slip_history"):
-            self.slip_history = []
+        SLIP_GOOD = 5.0
+        GAP_GOOD  = 2.0
 
-        if not hasattr(self, "slip_window"):
-            self.slip_window = 5  # At 25Hz, this is ~0.2 seconds.
+        slip_norm = slip_deg / SLIP_GOOD
+        gap_norm  = gap_m  / GAP_GOOD
 
-
-        # only look at back wheel slips
-        slip_rl = abs(state["SlipAngle_rl"])
-        slip_rr = abs(state["SlipAngle_rr"])
-        slip_raw = max(slip_rl, slip_rr) / self.obs_channels_info['SlipAngle_rl']
-
-        # EMA smoothing
-        alpha = 0.3
-        ema = self.ema_slip
-        slip_smooth = slip_raw if ema is None else alpha * slip_raw + (1 - alpha) * ema
-        self.ema_slip = slip_smooth
+        SLIP_CAP = 6.0
+        #GAP_CAP  = 4.0
+        GAP_ALPHA = 1.2
+        slip_norm = min(slip_norm, SLIP_CAP)
+        gap_norm = np.tanh(GAP_ALPHA * gap_norm)
 
 
-        # slip window
-        hist = self.slip_history
-        hist.append(slip_smooth)
+        # ---------- update max slip ----------
+        if slip_norm > self._max_slip_norm:
+            self._max_slip_norm = slip_norm
 
-        W = self.slip_window
-        if len(hist) > W + 1:
-            hist.pop(0)
-
-        if len(hist) > W:
-            slip_delta = hist[0] - hist[-1]   # improvement: positive means recovering
-        else:
-            slip_delta = 0.0
+        W_SLIP = 0.8
+        W_GAP  = 1.2
 
 
-        r = 0.0
+        ALIVE  = W_SLIP + W_GAP + 1.0
 
-        # SLIP PENALTY
-        r -= 3.0 * slip_smooth
-
-        # IMPROVING SLIP REWARD
-        r += 2.5 * slip_delta
+        slip_pen = W_SLIP * (slip_norm ** 2)
+        gap_pen  = W_GAP  * (gap_norm  ** 2)
 
 
-        # Piecewise reference line deviation
-        # Assumed maximum track deviation is ~10m
-        if self.use_reference_line_in_reward:
-            gap = abs(state["gap"])
-            
-            if gap < 2.0:
-                r -= 0.05 * (gap / 2.0)
-            else:
-                r -= 0.20 * ((gap - 2.0) / 10.0)
+        raw = ALIVE - slip_pen - gap_pen
+        #raw = ALIVE - slip_pen - gap_pen + rec_help + brake_help
 
 
-        # Jerk penalty
-        jerk = np.linalg.norm(actions_diff, ord=2)
-        r -= 0.001 * jerk**2
-
-        # To provide per-step feedback not to completely slow down to 0.
-        # Clipped to small value
-        # speed_bonus = 0.02 * state["local_velocity_x"]
-        # speed_bonus = np.clip(speed_bonus, 0.0, 0.03)
-        # r += speed_bonus
+        action_pen = 0.0
+        if actions_diff is not None:
+            ad = np.asarray(actions_diff, dtype=np.float32)
 
 
-        # NO REWARD if speed is very low (happens becasue the car stalls on a wall), applied after the EMA updates.
-        if(state["local_velocity_x"] < 5):
-            return np.array([-0.1]).reshape(-1)
+            ad = np.clip(ad, -2.0, 2.0)
 
 
-        # standard reward.
-        return np.array([r]).reshape(-1)
+            ACTION_WEIGHTS = np.array([1.0, 0.3, 0.3], dtype=np.float32)
+
+            action_pen = float(np.sum(ACTION_WEIGHTS * (ad ** 2)))
 
 
+            if slip_norm > 1:   # do not penaliz if > 5
+                action_pen = 0.0
 
+        raw -= 1.5 * action_pen
+        SCALE = 0.05
+        r = float(np.clip(SCALE * raw, -10.0, 2.0))
+
+        self._prev_slip_norm = slip_norm
+        self._reward_step_counter += 1
+
+        if speed_x < 3:
+            r = 0
+
+        return np.array([r], dtype=np.float32)
 
 
 
@@ -230,8 +267,10 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
             r_T = np.tanh(softmin / 50.0)   # 50 controls sharpness / magnitude
 
             # Range of slip_recovered rewards is between -10 to 10
-            return 10 * float(r_T)
+            return 10 * float(r_T) + 20
 
         # normal termination: crashed into wall, low speed, etc. 
         else:
-            return -20
+            if self.early_termination:
+                return -10
+            return -5

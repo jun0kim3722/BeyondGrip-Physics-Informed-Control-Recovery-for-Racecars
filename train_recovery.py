@@ -37,7 +37,7 @@ class Destabilizer:
 
         self.direction = 1.0
         self.intensity_factor = 1.0
-        self.counter_weight = 2.5
+        self.counter_weight = 3.5
 
     def reset(self, current_speed_kmh, base_mag, random_steer):
         self.step_counter = 0
@@ -46,7 +46,7 @@ class Destabilizer:
         if random_steer:
             self.direction = 1.0 if np.random.random() > 0.5 else -1.0
         else:
-            self.direction = 1.0
+            self.direction = -1.0
 
 
         # 2. Random Intensity
@@ -109,7 +109,7 @@ def parse_args():
     parser.add_argument("--config", default="config.yml", type=str)
     parser.add_argument("--randomize_speed", action="store_true", help="Enable target speed randomization", default=False)
     parser.add_argument("--randomize_steer", action="store_true", help="Enable destabilize steer randomization", default=False)
-    parser.add_argument("--base_target_speed", type=float, default=40.0)
+    parser.add_argument("--base_target_speed", type=float, default=80.0)
     parser.add_argument("--base_steer_mag", type=float, default=0.8)
     parser.add_argument("--num_episodes", type=int, default=10000)
     parser.add_argument("--seed", type=int, default=42)
@@ -153,8 +153,8 @@ def main():
         work_dir=work_dir,
         env_class=RecoveryAssettoEnv,
         env_kwargs=dict(
-            slip_threshold=7.0,
-            recovery_time=1.0
+            slip_threshold=5,
+            recovery_time=1.5
         )
     )
    
@@ -203,7 +203,9 @@ def main():
         wandb_logger=wandb_logger
     )
 
-    destabilizer = Destabilizer()
+    destabilizer = Destabilizer(feint_duration=6, counter_duration=12)
+    #destabilizer = Destabilizer()
+
 
     logger.info(">>> Recovery Training Loop Started")
     logger.info("=" * 60)
@@ -267,6 +269,8 @@ def main():
             # By Default Do no allow episode termination due to slip recovery
             env.slip_recovery_mode = False # this line is not really necessary because the flag is to False on env.reset()
             #env.use_relative_actions = True
+            env.use_relative_actions = True
+
 
             if phase == "APPROACH":
                 action = mpc.get_action(env.state) # MPC
@@ -282,11 +286,17 @@ def main():
 
             elif phase == "RECOVERY":
                 env.slip_recovery_mode = True
+                env.use_relative_actions = False
                 #env.use_relative_actions = False
                 if total_steps < agent._start_steps:
                     action = env.action_space.sample()
                 else:
                     action, _ = agent._algo.explore(obs)
+
+                    # Need to explore more. (if using relative actions)
+                    # if total_steps < 10000:
+                    #     action += np.random.normal(0, 0.25, size=action.shape)
+                    #     action = np.clip(action, -1, 1)
            
             next_obs, reward, done, info = env.step(action)
            
@@ -312,7 +322,7 @@ def main():
                 is_success, metrics = check_success_criteria(info, env.state, target_speed)
                
                 # Log recovery status every 25 steps (1 second)
-                if recovery_steps % 25 == 0:
+                if recovery_steps % 12 == 0:
                     logger.info(f"Step {ep_steps} | Slip Angle: {env.state['SlipAngle_rl']} Phase: RECOVERY | SlipRecovered: {slip_recovered} | Gap: {metrics['gap']:.2f}m | Speed: {metrics['speed']:.1f}km/h")
                
                 # Augmentation of terminal rewards is not necessary this is handled by the env and automatically routes the correct rewards
@@ -331,7 +341,11 @@ def main():
                 agent._replay_buffer.append(obs, action, reward, next_obs, mask)
                
                 if total_steps >= agent._start_steps:
-                    agent.update_model()
+
+                    # increase update steps for faster convergence
+                    updates = 2 if total_steps > 10000 else 1
+                    for _ in range(updates):
+                        agent.update_model()
                
                 ep_reward += reward
                 phase_rewards["RECOVERY"] += reward
