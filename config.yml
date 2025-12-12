@@ -19,17 +19,17 @@ action_dim: null  # placeholder
 steps: null # placeholder
 
 Agent:
-  num_steps: 500_000
+  num_steps: 1_000_000
   batch_size: 128
-  memory_size: 5_000
+  memory_size: 20_000
   offline_buffer_size: 12_000_000
   use_offline_buffer: False # offline dual buffer
   update_interval: 1
-  start_steps: 500
+  start_steps: 3000
   log_interval: 10
   eval_interval: 0
   num_eval_episodes: 1
-  checkpoint_freq: 20_000
+  checkpoint_freq: 50_000
 
 SAC:
   gamma: 0.992
@@ -54,6 +54,9 @@ DDPG:
   noise_std: 0.05
   policy_hidden_units: [256, 256, 256]
   q_hidden_units: [256, 256, 256]
+
+TD3:
+  noise_std: 0.2 # this does nothing
 
 AssettoCorsa:
   ego_sampling_freq: 25     # in Hz
