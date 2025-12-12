@@ -20,8 +20,7 @@ from common.logger import Logger  # WandB Logger
 
 from discor.agent import Agent
 from discor.algorithm.sac import SAC  # SAC
-from discor.algorithm.td3 import TD3  # SAC
-
+from discor.algorithm.td3 import TD3  # TD3
 
 
 # from discor.algorithm.ddpg import DDPG  # DDPG

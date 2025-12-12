@@ -48,7 +48,8 @@ class SAC(Algorithm):
         self._q_optim = Adam(self._online_q_net.parameters(), lr=q_lr)
 
         # Target entropy is -|A|.
-        self._target_entropy = -0.5 * float(self._action_dim)
+        # self._target_entropy = -0.5 * float(self._action_dim)
+        self._target_entropy = -float(self._action_dim)
 
         # We optimize log(alpha), instead of alpha.
         self._log_alpha = torch.zeros(

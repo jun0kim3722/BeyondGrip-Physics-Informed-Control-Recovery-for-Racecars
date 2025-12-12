@@ -1,5 +1,5 @@
 import os
-import datetime
+from datetime import datetime, timedelta
 import re
 import numpy as np
 import pandas as pd
@@ -125,10 +125,12 @@ class Logger:
         os.environ["WANDB_SILENT"] = "true" if cfg.wandb_silent else "false"
         import wandb
 
+        cur_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+
         wandb.init(
             project=self.project,
             entity=self.entity,
-            name=str(cfg.seed),
+            name=str(cur_time),
             group=self._group,
             tags=cfg_to_group(cfg, return_list=True) + [f"seed:{cfg.seed}"],
             dir=str(self._log_dir),
