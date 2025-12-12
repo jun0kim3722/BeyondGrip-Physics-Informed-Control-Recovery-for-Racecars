@@ -20,6 +20,10 @@ from common.logger import Logger  # WandB Logger
 
 from discor.agent import Agent
 from discor.algorithm.sac import SAC  # SAC
+from discor.algorithm.td3 import TD3  # SAC
+
+
+
 # from discor.algorithm.ddpg import DDPG  # DDPG
 
 try:
@@ -114,6 +118,7 @@ def parse_args():
     parser.add_argument("--num_episodes", type=int, default=10000)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("overrides", nargs=argparse.REMAINDER)
+    parser.add_argument("--algo", type=str, default="td3")
    
     return parser.parse_args()
 
@@ -187,6 +192,20 @@ def main():
         policy_hidden_units=policy_hidden,
         q_hidden_units=q_hidden
     )
+
+    # override and choose algo based on CLI
+    if args.algo == 'td3':
+        algo = TD3(
+            state_dim=env.observation_space.shape[0],
+            action_dim=env.action_space.shape[0],
+            device=device, seed=config.seed,
+            **OmegaConf.to_container(config.TD3))
+    elif args.algo == 'sac':
+        algo = SAC(
+            state_dim=env.observation_space.shape[0],
+            action_dim=env.action_space.shape[0],
+            device=device, seed=config.seed,
+            **OmegaConf.to_container(config.SAC))
    
     agent_config = dict(config.Agent)
     agent_config['update_interval'] = agent_config.get('update_interval', 1)
@@ -220,6 +239,8 @@ def main():
     total_steps = 0
    
     for episode in range(args.num_episodes):
+
+
        
         # Speed & Steer Randomization
         target_speed = args.base_target_speed
@@ -247,6 +268,13 @@ def main():
             pass
            
         obs = env.reset()
+        destabilizer.intensity_factor = 1.0
+        destabilizer.intensity_factor += np.random.normal(0, 0.5)
+        destabilizer.intensity_factor = np.clip(destabilizer.intensity_factor, 0, 2.0)
+
+        destabilizer.counter_weight = 3.5
+        destabilizer.counter_weight += np.random.normal(0, 1)
+        destabilizer.counter_weight = np.clip(destabilizer.counter_weight, 2.0, 3.5)
 
         destabilizer.reset(current_speed_kmh=(env.state['speed'] * 3.6), base_mag=steer_mag, random_steer=args.randomize_steer)
 
