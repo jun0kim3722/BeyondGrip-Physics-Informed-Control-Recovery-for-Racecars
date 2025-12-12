@@ -158,10 +158,11 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
         gap_norm  = gap_m  / GAP_GOOD
 
         SLIP_CAP = 6.0
-        #GAP_CAP  = 4.0
-        GAP_ALPHA = 1.2
+        GAP_CAP  = 4.0
+        GAP_ALPHA = 0.2
         slip_norm = min(slip_norm, SLIP_CAP)
-        gap_norm = np.tanh(GAP_ALPHA * gap_norm)
+        gap_norm = min(gap_norm, GAP_CAP)
+        #gap_norm = np.tanh(GAP_ALPHA * gap_norm)
 
 
         # ---------- update max slip ----------
@@ -169,13 +170,13 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
             self._max_slip_norm = slip_norm
 
         W_SLIP = 0.8
-        W_GAP  = 1.2
+        W_GAP  = 0.3
 
 
         ALIVE  = W_SLIP + W_GAP + 1.0
 
         slip_pen = W_SLIP * (slip_norm ** 2)
-        gap_pen  = W_GAP  * (gap_norm  ** 2)
+        gap_pen  = W_GAP  * (gap_norm ** 2)
 
 
         raw = ALIVE - slip_pen - gap_pen
@@ -195,10 +196,10 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
             action_pen = float(np.sum(ACTION_WEIGHTS * (ad ** 2)))
 
 
-            if slip_norm > 1:   # do not penaliz if > 5
+            if slip_norm > 0.8:   # do not penaliz if > 5
                 action_pen = 0.0
 
-        raw -= 1.5 * action_pen
+        raw -= 0.4 * action_pen
         SCALE = 0.05
         r = float(np.clip(SCALE * raw, -10.0, 2.0))
 
@@ -255,9 +256,17 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
             R2 = -1.0 * (v_exit - v_max)**2
             #R3 = -0.3 * (delta_heading**2)
 
+
+            steps_taken = self._reward_step_counter
+            T_max = 350
+            alpha = 10.0  # global weight for time penalty (tunable)
+            T_norm = steps_taken / T_max
+            R3 = -alpha * T_norm
+
+
             beta = 5.0
-            #vals = np.array([R1, R2, R3])
-            vals = np.array([R1, R2])
+            vals = np.array([R1, R2, R3])
+            #vals = np.array([R1, R2])
 
             # numerically stable softmin
             scaled = -beta * vals
@@ -266,8 +275,8 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
 
             r_T = np.tanh(softmin / 50.0)   # 50 controls sharpness / magnitude
 
-            # Range of slip_recovered rewards is between -10 to 10
-            return 10 * float(r_T) + 20
+            # Range of slip_recovered rewards is between -10 to 10  
+            return 10 * float(r_T) + 25
 
         # normal termination: crashed into wall, low speed, etc. 
         else:
