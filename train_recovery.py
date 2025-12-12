@@ -276,6 +276,9 @@ def main():
         destabilizer.counter_weight += np.random.normal(0, 1)
         destabilizer.counter_weight = np.clip(destabilizer.counter_weight, 2.0, 3.5)
 
+        destabilizer.feint_duration = np.clip(6 + np.random.normal(0, 0.7), 4, 8)
+        destabilizer.counter_duration = destabilizer.feint_duration * 2 - np.random.uniform(-2, 1)
+
         destabilizer.reset(current_speed_kmh=(env.state['speed'] * 3.6), base_mag=steer_mag, random_steer=args.randomize_steer)
 
         # Episode Loop Variables
