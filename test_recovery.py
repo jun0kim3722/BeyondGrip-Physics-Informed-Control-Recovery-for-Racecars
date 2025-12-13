@@ -574,9 +574,12 @@ def main():
     )
 
     destabilizer = Destabilizer()
-   
 
-        
+    print("Starting Eval")
+    evaluator = Evaluator(config, env, agent, destabilizer, wandb_logger)
+    evaluator.test()
+    print("Done")
+
 
 if __name__ == "__main__":
     main()
