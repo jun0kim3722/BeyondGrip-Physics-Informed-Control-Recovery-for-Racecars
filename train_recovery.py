@@ -128,7 +128,7 @@ def parse_args():
     parser.add_argument("--base_target_speed", type=float, default=80.0)
     parser.add_argument("--base_steer_mag", type=float, default=0.8)
     parser.add_argument("--num_episodes", type=int, default=10000)
-    #parser.add_argument("--load_path", default=None)
+    parser.add_argument("--load_path", default=None)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--algo", type=str, default="td3")
     parser.add_argument("overrides", nargs=argparse.REMAINDER)
@@ -450,7 +450,7 @@ def main():
                     #reward -= 5.0
                 
                 timeout = (ep_steps >= env._max_episode_steps)
-                terminated = done and not env.state["slip_recovered"] and not timeout
+                terminated = done and not env.state.get("slip_recovered", 0) and not timeout
 
                 agent._replay_buffer.append(obs, action, reward, next_obs, terminated, done)
 
