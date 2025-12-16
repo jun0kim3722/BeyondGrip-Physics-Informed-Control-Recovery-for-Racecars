@@ -7,13 +7,19 @@ import numpy as np
 import torch
 from datetime import datetime
 from omegaconf import OmegaConf
+from collections import deque
+
 
 sys.path.append(os.path.abspath('./assetto_corsa_gym'))
 sys.path.append(os.path.abspath('./algorithm/discor'))
 
 import AssettoCorsaEnv.assettoCorsa as assettoCorsa
 from assetto_corsa_gym.AssettoCorsaEnv.recovery_ac_env import RecoveryAssettoEnv
-# from assetto_corsa_gym.AssettoCorsaEnv.recovery_phys_ac_env import PhysicsRecoveryEnv
+from assetto_corsa_gym.AssettoCorsaEnv.recovery_ac_env import RecoveryAssettoEnv
+from algorithm.discor.discor.replay_buffer import EliteReplayBuffer
+
+
+from assetto_corsa_gym.AssettoCorsaEnv.recovery_phys_ac_env import PhysicsRecoveryEnv
 
 import common.logging_config as logging_config
 from common.logger import Logger  # WandB Logger
@@ -33,6 +39,13 @@ except ImportError:
 
 logger = logging.getLogger("RecoveryTrainer")
 
+
+def trunc_norm(mu, sigma, low, high):
+    while True:
+        x = mu + sigma * np.random.randn()
+        if low <= x <= high:
+            return x
+
 class Destabilizer:
     def __init__(self, feint_duration=10, counter_duration=20):
         self.step_counter = 0
@@ -46,18 +59,19 @@ class Destabilizer:
     def reset(self, current_speed_kmh, base_mag, random_steer):
         self.step_counter = 0
        
-        # 1. Random Direction
         if random_steer:
             self.direction = 1.0 if np.random.random() > 0.5 else -1.0
         else:
             self.direction = -1.0
 
 
-        # 2. Random Intensity
         random_noise = np.random.normal(0, 0.05)
-        raw_intensity = np.clip(base_mag + random_noise, 0.3, 1.0)
+
+        low_intensity = 0.3
+        high_intensity = 1.0
+        raw_intensity = trunc_norm(base_mag, 0.1, low_intensity, high_intensity)
+        #raw_intensity = np.clip(base_mag + random_noise, 0.3, 1.0)
        
-        # 3. Speed Scaling
         speed_ratio = 80.0 / max(current_speed_kmh, 10.0)
        
         self.intensity_factor = np.clip(raw_intensity * speed_ratio, 0.2, 1.0)
@@ -100,9 +114,7 @@ def check_success_criteria(info, state, target_speed_kmh):
 
     current_speed = state.get('speed', 0) * 3.6
     is_speed_ok = current_speed > 30.0  # Above 30 km/h
-   
-    # is_success = slip_recovered and is_on_track and is_speed_ok
-    #is_success = slip_recovered and is_speed_ok and is_on_track
+  
     is_success = slip_recovered and is_speed_ok
    
     return is_success, {"gap": gap, "speed": current_speed}
@@ -116,14 +128,19 @@ def parse_args():
     parser.add_argument("--base_target_speed", type=float, default=80.0)
     parser.add_argument("--base_steer_mag", type=float, default=0.8)
     parser.add_argument("--num_episodes", type=int, default=10000)
+    #parser.add_argument("--load_path", default=None)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("overrides", nargs=argparse.REMAINDER)
     parser.add_argument("--algo", type=str, default="td3")
-   
-    return parser.parse_args()
+    parser.add_argument("overrides", nargs=argparse.REMAINDER)
+
+    args = parser.parse_args()
+
+    return args
 
 def main():
     args = parse_args()
+    # Set a path like this to load a path. If you uncomment this line it WILL be used.
+    #args.load_path = r"C:\Users\22ave\Desktop\BeyondGrip-Physics-Informed-Control-Recovery-for-Racecars\outputs_recovery\monza\20251215_151914\checkpoint_32530"
    
     # --- Config Setup ---
     config = OmegaConf.load(args.config)
@@ -199,6 +216,7 @@ def main():
             state_dim=env.observation_space.shape[0],
             action_dim=env.action_space.shape[0],
             device=device, seed=config.seed,
+            wandb_logger=wandb_logger,
             **OmegaConf.to_container(config.TD3))
     elif args.algo == 'sac':
         algo = SAC(
@@ -219,11 +237,15 @@ def main():
         device=device,
         seed=args.seed,
         **agent_config,
-        wandb_logger=wandb_logger
+        wandb_logger=wandb_logger,
+
     )
 
+    if args.load_path is not None:
+        load_buffer = True
+        agent.load(args.load_path, load_buffer=load_buffer)
+
     destabilizer = Destabilizer(feint_duration=6, counter_duration=12)
-    #destabilizer = Destabilizer()
 
 
     logger.info(">>> Recovery Training Loop Started")
@@ -237,17 +259,27 @@ def main():
     logger.info("=" * 60)
    
     total_steps = 0
+    SUCCESS_WINDOW = 300 # moving average window
+    episode_success_buffer = deque(maxlen=SUCCESS_WINDOW)
    
+
+
+
+    print(f"nstep  {agent._algo.nstep}")
+
+    # Leave this as false, I was not able to get meaningful results with True, this is why we are doing heirchal RL I guess.
+    use_relative_actions = False
+
+    bin_idx = 0
     for episode in range(args.num_episodes):
-
-
        
-        # Speed & Steer Randomization
         target_speed = args.base_target_speed
         if args.randomize_speed:
-            target_speed += np.random.normal(0, 10.0)
-            target_speed = np.clip(target_speed, target_speed - 20, target_speed + 20)
-       
+            bins = [(60, 65), (65, 70), (70, 75), (75, 80), (80, 85), (85, 90), (90, 95), (95, 100)]
+            low, high = bins[bin_idx]
+            target_speed = np.random.uniform(low, high)
+            bin_idx = (bin_idx + 1) % len(bins)
+        target_speed = 80
         steer_mag = args.base_steer_mag
         if args.randomize_steer:
             steer_mag += np.random.normal(0, 0.05)
@@ -268,19 +300,16 @@ def main():
             pass
            
         obs = env.reset()
-        destabilizer.intensity_factor = 1.0
-        destabilizer.intensity_factor += np.random.normal(0, 0.5)
-        destabilizer.intensity_factor = np.clip(destabilizer.intensity_factor, 0, 2.0)
-
-        destabilizer.counter_weight = 3.5
-        destabilizer.counter_weight += np.random.normal(0, 1)
-        destabilizer.counter_weight = np.clip(destabilizer.counter_weight, 2.0, 3.5)
-
-        destabilizer.feint_duration = np.clip(6 + np.random.normal(0, 0.7), 4, 8)
-        destabilizer.counter_duration = destabilizer.feint_duration * 2 - np.random.uniform(-2, 1)
-
+        # reset randomizes the intensity already
         destabilizer.reset(current_speed_kmh=(env.state['speed'] * 3.6), base_mag=steer_mag, random_steer=args.randomize_steer)
 
+        destabilizer.counter_weight = 3.5
+        destabilizer.counter_weight += np.random.normal(0, 2)
+        destabilizer.counter_weight = trunc_norm(2.5, 0.3, 1.5, 3.5)
+
+        destabilizer.feint_duration = trunc_norm(6, 1, 4, 8)
+
+        destabilizer.counter_duration = trunc_norm(14, 6, 8, 25)
         # Episode Loop Variables
         done = False
         phase = "APPROACH"
@@ -296,6 +325,11 @@ def main():
         logger.info(f"EP {episode} | Target Speed: {target_speed:.1f} km/h")
 
         while not done:
+            time_info={"episode": episode,
+                        "recovery_steps": recovery_steps,
+                        "global_step": total_steps,
+                        "step": total_steps,
+            }
             current_speed_kmh = env.state['speed'] * 3.6
             # By Default Do no allow episode termination due to slip recovery
             env.slip_recovery_mode = False # this line is not really necessary because the flag is to False on env.reset()
@@ -317,12 +351,13 @@ def main():
 
             elif phase == "RECOVERY":
                 env.slip_recovery_mode = True
-                env.use_relative_actions = False
-                #env.use_relative_actions = False
+
+                env.use_relative_actions = use_relative_actions
                 if total_steps < agent._start_steps:
                     action = env.action_space.sample()
                 else:
                     action, _ = agent._algo.explore(obs)
+
 
                     # Need to explore more. (if using relative actions)
                     # if total_steps < 10000:
@@ -344,15 +379,59 @@ def main():
                     if gap > 10.0:
                         logger.warning(f"Episode stopped in {phase} phase: Off-track (gap: {gap:.2f}m)")
                         break
-                   
+
+
                 done = False
                 reward = 0.0
             else:
                 # RECOVERY phase: check success and log slip_recovered status
+
+                stats = {
+                    "debug/done_from_env": done,
+                    "telemetry/speed_kmh": env.state["speed"] * 3.6,
+                    "telemetry/gap": env.state["gap"],
+
+                    "telemetry/max_rear_slip_angle_deg": max(
+                        abs(env.state["SlipAngle_rl"]),
+                        abs(env.state["SlipAngle_rr"]),
+                    ),
+
+                    "telemetry/min_rear_Dy": min(
+                        env.state["Dy_rl"],
+                        env.state["Dy_rr"],
+                    ),
+
+                    "telemetry/max_rear_slip_ratio": max(
+                        abs(env.state["tyre_slip_ratio_rl"]),
+                        abs(env.state["tyre_slip_ratio_rr"]),
+                    ),
+
+                    "telemetry/steerAngle_deg": env.state["steerAngle"],
+                    "telemetry/steerAction": env.state["steerAngle"] / 360,
+                    "telemetry/throttle": env.state["accStatus"],
+                    "telemetry/brake": env.state["brakeStatus"],
+
+                    "telemetry/accel_x": env.state["accelX"],
+                    "telemetry/accel_y": env.state["accelY"],
+                    "telemetry/yaw_rate": env.state["angular_velocity_z"],
+
+
+                    "telemetry/wheel_speed_rear_diff": abs(
+                        env.state["wheel_speed_rl"] - env.state["wheel_speed_rr"]
+                    ),
+                    "telemetry/gear": env.state["actualGear"],
+                    "telemetry/vel_x": env.state["local_velocity_x"],
+                    "telemetry/vel_y": env.state["local_velocity_y"],
+
+                    "per_step_reward": reward,
+                }
+                stats |= time_info
+                wandb_logger.log(stats)
+
+
                 slip_recovered = info.get('slip_recovered', False)
                 is_success, metrics = check_success_criteria(info, env.state, target_speed)
-               
-                # Log recovery status every 25 steps (1 second)
+
                 if recovery_steps % 12 == 0:
                     logger.info(f"Step {ep_steps} | Slip Angle: {env.state['SlipAngle_rl']} Phase: RECOVERY | SlipRecovered: {slip_recovered} | Gap: {metrics['gap']:.2f}m | Speed: {metrics['speed']:.1f}km/h")
                
@@ -363,20 +442,35 @@ def main():
                     done = True
                     logger.info(f"SUCCESS! Gap: {metrics['gap']:.2f}, Speed: {metrics['speed']:.1f}")
 
+
                 if env.state['done'] and not is_success:
                     done = True
                     logger.info(f"FAILED. Normal Termination.")
+
                     #reward -= 5.0
-                   
-                mask = False if done and ep_steps < env._max_episode_steps else True
-                agent._replay_buffer.append(obs, action, reward, next_obs, mask)
+                
+                timeout = (ep_steps >= env._max_episode_steps)
+                terminated = done and not env.state["slip_recovered"] and not timeout
+
+                agent._replay_buffer.append(obs, action, reward, next_obs, terminated, done)
+
+
                
                 if total_steps >= agent._start_steps:
-
-                    # increase update steps for faster convergence
-                    updates = 2 if total_steps > 10000 else 1
+                    if total_steps < 30_000:
+                        updates = 1
+                    # # elif total_steps < 35_000:
+                    # #     updates = 2
+                    # else:
+                    #     updates = 3
+                    updates = 2
                     for _ in range(updates):
-                        agent.update_model()
+                        stats = agent.update_model()
+                        if stats == None:
+                            continue
+                        stats = stats | time_info
+                        
+                        wandb_logger.log(stats)
                
                 ep_reward += reward
                 phase_rewards["RECOVERY"] += reward
@@ -395,12 +489,28 @@ def main():
                 logger.info(f"FAILED. Timeout.")
 
 
+
         # --- Episode End Logging ---
         logger.info(f"Ep {episode} End | Phase: {phase} | Reward: {ep_reward:.2f} | Steps: {ep_steps} | Recovery Steps: {recovery_steps} | Success: {is_success}")
        
+        episode_success_buffer.append(is_success)
+        if len(episode_success_buffer) > 0:
+            rolling_success = sum(episode_success_buffer)/len(episode_success_buffer)
+        else:
+            rolling_success = 0
+        
+        # Don't worry about this, I was testing using mor advanced replay buffers
+        # if info.get("slip_recovered", False):
+        #     for (s, a, r, ns, d) in episode_transitions:
+        #         agent._replay_buffer.append(s, a, r, ns, d, is_elite=True)
+
+
         # WandB logging
         if wandb_logger:
             log_dict = {
+                "success/rate": rolling_success,
+                "success/window_size": len(episode_success_buffer),
+
                 "episode": episode,
                 "episode_reward": ep_reward,
                 "episode_steps": ep_steps,
@@ -417,7 +527,13 @@ def main():
                 "success/ended_in_recovery": int(phase == "RECOVERY"),
                
                 "config/target_speed": target_speed,
+                "config/bin_idx": bin_idx,
                 "config/steer_magnitude": steer_mag,
+
+                "config/feint_duration": destabilizer.feint_duration,
+                "config/counter_duration" : destabilizer.counter_duration,
+                "config/intensity_factor":destabilizer.intensity_factor,
+                "config/counter_weight":destabilizer.counter_weight,
             }
            
             if phase == "RECOVERY":
