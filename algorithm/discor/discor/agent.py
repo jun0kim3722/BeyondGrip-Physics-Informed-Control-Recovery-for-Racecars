@@ -96,11 +96,24 @@ class Agent:
     def load(self, path, load_buffer=True):
         self._algo.load_models(path)
         logger.info(f"loaded model from {path}")
+
         if load_buffer:
-            with open(path + "replay_buffer.pkl", 'rb') as f:
+            buf_path = os.path.join(path, "replay_buffer.pkl")
+            if not os.path.exists(buf_path):
+                raise FileNotFoundError(f"Replay buffer missing at {buf_path}")
+
+            with open(buf_path, "rb") as f:
                 self._replay_buffer = pickle.load(f)
+
             self._steps = self._replay_buffer._n
-            logger.info(f"loaded buffer from {path}. Number of steps: {len(self._replay_buffer)}")
+            logger.info(f"loaded buffer from {path}. steps={self._steps}")
+            print(f"loaded buffer from {path}. steps={self._steps}")
+        # if load_buffer:
+        #     with open(path + "/replay_buffer.pkl", 'rb') as f:
+        #         self._replay_buffer = pickle.load(f)
+        #     self._steps = self._replay_buffer._n
+        #     logger.info(f"loaded buffer from {path}. Number of steps: {len(self._replay_buffer)}")
+        #     print(f"loaded buffer from {path}. Number of steps: {len(self._replay_buffer)}")
 
     def run(self):
         try:
