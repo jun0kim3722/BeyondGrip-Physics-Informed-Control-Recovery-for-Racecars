@@ -24,29 +24,9 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
         # Create a top-level reward log file (same folder as train_recovery.py)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-        self.reward_log_path = os.path.join(
-            os.getcwd(), f"reward_log_{timestamp}.csv"
-        )
-
-        # Write header only once
-        with open(self.reward_log_path, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                "step",
-                "slip_deg",
-                "gap_m",
-                "slip_norm",
-                "gap_norm",
-                "slip_pen",
-                "gap_pen",
-                "brake_help",
-                "raw",
-                "reward",
-                "acc_x",
-                "speed_x"
-            ])
-
         self._reward_step_counter = 0
+        self._low_speed_time = 0
+
 
 
 
@@ -67,6 +47,12 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
         self._prev_slip_norm = self._slip_norm0
         self._reward_step_counter = 0
 
+        self._low_speed_time = 0
+
+        self._prev_yaw = None
+        self._prev_gap = None
+
+
 
         return super().reset()
 
@@ -76,8 +62,6 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
         '''
         # use original call first.
         state, buf_infos = super().expand_state(state)
-
-
 
 
         # Probably don't modify things below this line in this function.
@@ -93,9 +77,14 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
         max_slip = max(slip_rl, slip_rr)
 
 
+        if state["speed"] < 4:
+            self._low_speed_time += 1
+        else:
+            self._low_speed_time = 0
+
         # only terminate if slip_recovery_mode is on
         if self.slip_recovery_mode:
-            if state["out_of_track"] and state["gap"] > 4:
+            if (state["out_of_track"] and abs(state["gap"]) > 1) or self._low_speed_time > 10:
                 state["done"] = 1
                 buf_infos["terminated"] = True
                 buf_infos["slip_recovered"] = False
@@ -106,7 +95,7 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
                 else:
                     self.slip_counter = 0
 
-                if self.slip_counter >= self.required_steps and state["gap"] < 3:
+                if self.slip_counter >= self.required_steps and abs(state["gap"]) < 3:
                     state["done"] = 1
                     buf_infos["terminated"] = True
                     buf_infos["slip_recovered"] = True
@@ -146,140 +135,265 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
         if hasattr(self, "slip_recovery_mode") and not self.slip_recovery_mode:
             return np.array([0.0], dtype=np.float32)
 
-        # ---------- basic features ----------
-        slip_deg = abs(max(state["SlipAngle_rl"], state["SlipAngle_rr"]))
+        slip_deg = max(abs(state["SlipAngle_rl"]), abs(state["SlipAngle_rr"]))
         gap_m    = abs(state.get("gap", 0.0))
-        speed_x  = state.get("local_velocity_x", 0.0)
+        prev_gap = getattr(self, "_prev_gap", None)
+        if prev_gap is None:
+            gap_delta = 0.0
+        else:
+            gap_delta = prev_gap - gap_m   # positive if improving bc we take abs of the gap
+
+        self._prev_gap = gap_m
+
+        v_lat = state["local_velocity_y"]
+
+
+
+        # normalize (meters)
+        gap_delta_norm = np.clip(gap_delta / 0.5, -1.0, 1.0)
+
+        # weight
+        W_GAP_IMPROVE = 6.0
+        r_gap_improve = W_GAP_IMPROVE * gap_delta_norm
+
+
+
+        yaw = state["angular_velocity_z"]  # signed float
+
+        prev_yaw = getattr(self, "_prev_yaw", None)
+
+        # Always safe
+        yaw_rate = abs(yaw)
+
+        if prev_yaw is None:
+            yaw_acc = 0.0
+            yaw_flip = False
+        else:
+            yaw_acc = yaw - prev_yaw
+            yaw_flip = (yaw * prev_yaw) < 0.0
+
+        self._prev_yaw = yaw
 
         SLIP_GOOD = 5.0
         GAP_GOOD  = 2.0
 
+        # SLIP_LOCK = 2.5    # full yaw damping below this
+        # SLIP_FREE = 6.0    # no yaw damping above this
+
+        # yaw_scale = np.clip(
+        #     (SLIP_FREE - slip_deg) / (SLIP_FREE - SLIP_LOCK),
+        #     0.0, 1.0
+        # )
+
+        # r_yaw_rate = -1.2 * yaw_scale * (yaw_rate ** 2)
+        # r_yaw_acc  = -0.6 * yaw_scale * (yaw_acc  ** 2)
+
+        # flip pentaliteis
+
+
+
         slip_norm = slip_deg / SLIP_GOOD
-        gap_norm  = gap_m  / GAP_GOOD
+        gap_norm  = gap_m  / GAP_GOOD # ALWAYS POSITIVE
 
         SLIP_CAP = 6.0
         GAP_CAP  = 4.0
-        GAP_ALPHA = 0.2
         slip_norm = min(slip_norm, SLIP_CAP)
         gap_norm = min(gap_norm, GAP_CAP)
-        #gap_norm = np.tanh(GAP_ALPHA * gap_norm)
 
 
-        # ---------- update max slip ----------
         if slip_norm > self._max_slip_norm:
             self._max_slip_norm = slip_norm
 
         W_SLIP = 0.8
-        W_GAP  = 0.3
+        W_GAP  = 0.1
 
 
         ALIVE  = W_SLIP + W_GAP + 1.0
 
+        if slip_norm < 1.5:
+            if gap_norm < 2:
+                ALIVE += 3
+            elif gap_norm < 4:
+                ALIVE += 1.5
+
+
         slip_pen = W_SLIP * (slip_norm ** 2)
         gap_pen  = W_GAP  * (gap_norm ** 2)
 
+        slip_pen = min(slip_pen, 20)
+        gap_pen = min(gap_pen, 15)
 
-        raw = ALIVE - slip_pen - gap_pen
-        #raw = ALIVE - slip_pen - gap_pen + rec_help + brake_help
+        t = self._reward_step_counter
+        if t <= 100:
+            late_scale = 1.0
+        else:
+            late_scale = max(0, (450 - t) / (450 - 100))
+        slip_pen *= late_scale
+        gap_pen *= late_scale
 
-
-        action_pen = 0.0
-        if actions_diff is not None:
-            ad = np.asarray(actions_diff, dtype=np.float32)
-
-
-            ad = np.clip(ad, -2.0, 2.0)
-
-
-            ACTION_WEIGHTS = np.array([1.0, 0.3, 0.3], dtype=np.float32)
-
-            action_pen = float(np.sum(ACTION_WEIGHTS * (ad ** 2)))
+        raw = ALIVE - slip_pen - gap_pen + r_gap_improve
+        flip_pen = 0
+        flip_pen = -0.2 if (yaw_flip and slip_deg < SLIP_GOOD) else 0.0
 
 
-            if slip_norm > 0.8:   # do not penaliz if > 5
-                action_pen = 0.0
+        #raw += flip_pen
+        #raw += r_yaw_rate + r_yaw_acc
 
-        raw -= 0.4 * action_pen
-        SCALE = 0.05
-        r = float(np.clip(SCALE * raw, -10.0, 2.0))
+
+        # steer_rate_pen =0.0
+        # if actions_diff is not None:
+        #     ad = np.asarray(actions_diff, dtype=np.float32)
+        #     dsteer = float(ad[0])  # assuming action=[steer, gas, brake]
+
+        #     is_stable = (slip_deg < SLIP_GOOD) and (gap_m < 4)
+        #     if is_stable and actions_diff is not None:
+        #         ad = np.clip(np.asarray(actions_diff, np.float32), -1.0, 1.0)
+        #         dsteer, dthrot, dbrake = float(ad[0]), float(ad[1]), float(ad[2])
+
+        #         Ls = 2.0   # steering delta weight
+        #         Lt = 0.3   # throttle delta weight (smaller)
+        #         Lb = 0.3   # brake delta weight (smaller)
+
+        #         #raw -= (Ls * dsteer**2 + Lt * dthrot**2 + Lb * dbrake**2)
+
+        #raw -= steer_rate_pen
+
+        
+        # GAP_SAFE = 2.0   # meters
+        # GAP_DANGER = 6.0   # meters (near edge)
+
+        # danger = np.clip((gap_m - GAP_SAFE) / (GAP_DANGER - GAP_SAFE), 0.0, 1.0)
+
+        # v_lat_clip = min(abs(v_lat) / 5.0, 1)
+        # raw -= 0.6 * late_scale * danger * v_lat_clip
+
+        # V_LAT_REF = 4.0
+        # v_lat_n = np.clip(v_lat / V_LAT_REF, -2.0, 2.0)
+
+        # VLAT_MIN = 0.3
+        # VLAT_FULL = 4.0
+        # v_lat_scale = np.clip(
+        #     (VLAT_FULL - slip_deg) / (VLAT_FULL - VLAT_MIN),
+        #     0.3, 1.0
+        # )
+        # gap_signed = state.get("gap", 0.0)
+
+        # r_vlat_align = 0.8 * v_lat_scale * np.tanh(-gap_signed * v_lat_n)
+        # r_vlat_mag   = -0.2 * v_lat_scale * (v_lat_n ** 2)
+
+        #raw += r_vlat_align + r_vlat_mag
+
+
+        SCALE = 0.2
+        r = float(np.clip(SCALE * raw, -8.0, 2.0))
 
         self._prev_slip_norm = slip_norm
         self._reward_step_counter += 1
-
-        if speed_x < 3:
-            r = 0
 
         return np.array([r], dtype=np.float32)
 
 
 
     def terminal_reward(self, state, info):
-        """
-        Reward given only on episode termination.
-        There are two ways you can get to the terminal reward. With a TRUE done signal and with slip_recovered true or false.
-        """
+        # """
+        # Reward given only on episode termination.
+        # There are two ways you can get to the terminal reward. With a TRUE done signal and with slip_recovered true or false.
+        # """
 
-        # successfully recovered from a slip
-        if info["slip_recovered"]:
-            v_exit = float(state["speed"])
+        # # successfully recovered from a slip
+        # if info["slip_recovered"]:
+        #     v_exit = float(state["speed"])
 
-            # heading stuff
-            # car_yaw = float(state["yaw"])
-            # ref_yaw = float(self.ref_lap.get_yaw(state["LapDist"]))
+        #     # heading stuff
+        #     # car_yaw = float(state["yaw"])
+        #     # ref_yaw = float(self.ref_lap.get_yaw(state["LapDist"]))
 
-            # delta = car_yaw - ref_yaw
-            # delta_heading = (delta + np.pi) % (2*np.pi) - np.pi
+        #     # delta = car_yaw - ref_yaw
+        #     # delta_heading = (delta + np.pi) % (2*np.pi) - np.pi
 
-            LOCAL_LA_DIST = 40.0 # look ahead 40 meters ahead to calculate curvature
-            # curv_vec = self.ref_lap.get_curvature_segment(
-            #     dist=state["LapDist"],
-            #     LA_dist=LOCAL_LA_DIST,
-            #     vector_size=1
-            # )
+        #     LOCAL_LA_DIST = 40.0 # look ahead 40 meters ahead to calculate curvature
+        #     # curv_vec = self.ref_lap.get_curvature_segment(
+        #     #     dist=state["LapDist"],
+        #     #     LA_dist=LOCAL_LA_DIST,
+        #     #     vector_size=1
+        #     # )
 
-            curv_vec = self.ref_lap.get_curvature_segment(
-                dist=state["LapDist"],
-                LA_dist=LOCAL_LA_DIST,
-                vector_size=5
-            )
-            kappa = np.mean(np.abs(curv_vec))
-            #kappa = float(curv_vec[0])
-            #kappa = max(1e-6, abs(kappa))
+        #     curv_vec = self.ref_lap.get_curvature_segment(
+        #         dist=state["LapDist"],
+        #         LA_dist=LOCAL_LA_DIST,
+        #         vector_size=5
+        #     )
+        #     kappa = np.mean(np.abs(curv_vec))
+        #     #kappa = float(curv_vec[0])
+        #     #kappa = max(1e-6, abs(kappa))
 
-            # curvature based v_max
-            mu = 1.2
-            g = 9.81
-            v_max_phys = np.sqrt(mu * g / kappa)
-            v_max = min(80, v_max_phys) # 80 is the top speed in m/s
+        #     # curvature based v_max
+        #     mu = 1.2
+        #     g = 9.81
+        #     v_max_phys = np.sqrt(mu * g / kappa)
+        #     v_max = min(80, v_max_phys) # 80 is the top speed in m/s
 
-            R1 = 1.0 * v_exit
-            R2 = -1.0 * (v_exit - v_max)**2
-            #R3 = -0.3 * (delta_heading**2)
-
-
-            steps_taken = self._reward_step_counter
-            T_max = 350
-            alpha = 10.0  # global weight for time penalty (tunable)
-            T_norm = steps_taken / T_max
-            R3 = -alpha * T_norm
+        #     #R1 = 1.0 * v_exit
+        #     R1 = np.tanh(v_exit / 20)
+        #     speed_excess = max(0.0, v_exit - v_max)
+        #     R2 = -1.0 * (speed_excess)**2
+        #     #R3 = -0.3 * (delta_heading**2)
 
 
-            beta = 5.0
-            vals = np.array([R1, R2, R3])
-            #vals = np.array([R1, R2])
+        #     steps_taken = self._reward_step_counter
+        #     T_max = 350
+        #     alpha = 10.0  # global weight for time penalty (tunable)
+        #     T_norm = steps_taken / T_max
+        #     R3 = -alpha * T_norm
 
-            # numerically stable softmin
-            scaled = -beta * vals
-            m = np.max(scaled)
-            softmin = -(1.0/beta) * (m + np.log(np.sum(np.exp(scaled - m))))
 
-            r_T = np.tanh(softmin / 50.0)   # 50 controls sharpness / magnitude
+        #     beta = 1.0
+        #     vals = np.array([R1, R2, R3])
+        #     #vals = np.array([R1, R2])
 
-            # Range of slip_recovered rewards is between -10 to 10  
-            return 10 * float(r_T) + 25
+        #     # numerically stable softmin
+        #     scaled = -beta * vals
+        #     m = np.max(scaled)
+        #     softmin = -(1.0/beta) * (m + np.log(np.sum(np.exp(scaled - m))))
 
-        # normal termination: crashed into wall, low speed, etc. 
-        else:
-            if self.early_termination:
-                return -10
-            return -5
+        #     r_T = np.tanh(softmin / 50.0)   # 50 controls sharpness / magnitude
+
+        #     # Range of slip_recovered rewards is between -10 to 10  
+        #     return 10 * float(r_T) + 30
+
+        # # normal termination: crashed into wall, low speed, etc. 
+        # else:
+        #     if self.early_termination:
+        #         return -10
+        #     return -5
+
+
+        slip = max(abs(state["SlipAngle_rl"]), abs(state["SlipAngle_rr"]))
+        gap  = abs(state["gap"])
+        speed = state["speed"] * 3.6 #kmh
+        T = self._reward_step_counter
+
+        if info.get("slip_recovered", False):
+            time_bonus = 1.0 - (T / 350.0)
+            speed_bonus = np.tanh(speed / 30.0)
+            GAP_OK = 1.5
+            gap_bonus = np.exp(-gap / GAP_OK)
+            return 30.0 + 10.0 * time_bonus + 5.0 * speed_bonus + 15 * gap_bonus
+
+        slip_n = min(slip / 20.0, 2.0)
+        gap_n  = min(gap  / 8.0,  1.5)
+        speed_n = min(speed / 30, 1.5)
+
+        crash_severity = (
+            1.2 * slip_n**2 +
+            0.5 * gap_n**2 +
+            0.25 * speed_n**2
+        )
+
+        # time survived softens punishment exponentially
+
+        t = T / 25.0
+        decay = np.exp(-t / 6.0)
+
+
+        return -20.0 - 20.0 * crash_severity * decay #(1.0 - time_factor)
