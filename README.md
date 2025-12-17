@@ -200,7 +200,7 @@ The **Custom Shaders Patch** is required to restart the car.
 | Weather                  | **Mid Clear** |
 | Ambient Temperature       | **26°C** |
 | Time Multiplier           | **1x** |
-| Track Surface             | **Optimum** |
+| Track Surface             | **Random** |
 | Penalties                 | **ON** |
 
 <br>
@@ -235,6 +235,7 @@ python ./train_recovery.py --algo td3 \
 
 **Key Arguments:**
 - `--algo`: Algorithm to use (`sac`, `td3`, `ddpg`, default: `td3`)
+- `--pirl`: Enable physics reward for training
 - `--randomize_speed`: Enable target speed randomization during training
 - `--randomize_steer`: Enable steering intensity randomization
 - `--num_episodes`: Number of training episodes (default: 10000)
