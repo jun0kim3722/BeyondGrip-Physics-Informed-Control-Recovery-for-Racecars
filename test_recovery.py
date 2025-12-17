@@ -140,6 +140,71 @@ class Evaluator():
         self.steps = 0
     
 
+    # thanks chat gpt
+    def summarize_episode_telemetry(self, telemetry):
+        t = np.array  # shorthand
+
+        summary = {
+            # --------------------
+            # Speed
+            # --------------------
+            "episode/mean_speed_kmh": float(t(telemetry["speed_kmh"]).mean()),
+            "episode/max_speed_kmh": float(t(telemetry["speed_kmh"]).max()),
+            "episode/min_speed_kmh": float(t(telemetry["speed_kmh"]).min()),
+            "episode/final_speed_kmh": float(telemetry["speed_kmh"][-1]),
+
+            # --------------------
+            # Gap (stability)
+            # --------------------
+            "episode/max_gap": float(np.abs(t(telemetry["gap"])).max()),
+            "episode/mean_gap": float(np.abs(t(telemetry["gap"])).mean()),
+            "episode/final_gap": float(abs(telemetry["gap"][-1])),
+
+            # --------------------
+            # Rear slip angle (critical)
+            # --------------------
+            "episode/max_rear_slip_angle_deg": float(
+                t(telemetry["rear_slip_angle_deg"]).max()
+            ),
+            "episode/mean_rear_slip_angle_deg": float(
+                t(telemetry["rear_slip_angle_deg"]).mean()
+            ),
+
+            # --------------------
+            # Slip ratio
+            # --------------------
+            "episode/max_rear_slip_ratio": float(
+                t(telemetry["rear_slip_ratio"]).max()
+            ),
+
+            # --------------------
+            # Tire force (Dy)
+            # --------------------
+            "episode/min_rear_Dy": float(
+                t(telemetry["rear_Dy"]).min()
+            ),
+
+            # --------------------
+            # Control effort / smoothness
+            # --------------------
+            "episode/max_steer_deg": float(np.abs(t(telemetry["steer_deg"])).max()),
+            "episode/mean_abs_steer_deg": float(np.abs(t(telemetry["steer_deg"])).mean()),
+
+            "episode/max_yaw_rate": float(np.abs(t(telemetry["yaw_rate"])).max()),
+
+            "episode/max_wheel_speed_diff": float(
+                t(telemetry["wheel_speed_diff"]).max()
+            ),
+
+            # --------------------
+            # Reward diagnostics
+            # --------------------
+            "episode/total_reward": float(t(telemetry["reward"]).sum()),
+            "episode/min_step_reward": float(t(telemetry["reward"]).min()),
+        }
+
+        return summary
+
     def real_evaluate(self, config, env, agent, episode, destabilizer, wandb_logger,
                       slip_param, test_class):
         
@@ -182,7 +247,19 @@ class Evaluator():
         yaw_rate_scale = 0
         rng = np.random.default_rng(seed=episode)
         yaw_rate_scale = rng.uniform(0.9, 1.1)
-        
+        def init_episode_telemetry():
+            return {
+                "speed_kmh": [],
+                "gap": [],
+                "rear_slip_angle_deg": [],
+                "rear_slip_ratio": [],
+                "rear_Dy": [],
+                "steer_deg": [],
+                "yaw_rate": [],
+                "wheel_speed_diff": [],
+                "reward": [],
+            }
+        telemetry = init_episode_telemetry()
         while not done:
             alpha = 0
             time_info={"episode": episode,
@@ -239,6 +316,39 @@ class Evaluator():
                 done = False
                 reward = 0.0
             else:
+                telemetry["speed_kmh"].append(env.state["speed"] * 3.6)
+                telemetry["gap"].append(env.state["gap"])
+
+                telemetry["rear_slip_angle_deg"].append(
+                    max(
+                        abs(env.state["SlipAngle_rl"]),
+                        abs(env.state["SlipAngle_rr"]),
+                    )
+                )
+
+                telemetry["rear_slip_ratio"].append(
+                    max(
+                        abs(env.state["tyre_slip_ratio_rl"]),
+                        abs(env.state["tyre_slip_ratio_rr"]),
+                    )
+                )
+
+                telemetry["rear_Dy"].append(
+                    min(env.state["Dy_rl"], env.state["Dy_rr"])
+                )
+
+                telemetry["steer_deg"].append(env.state["steerAngle"])
+                telemetry["yaw_rate"].append(env.state["angular_velocity_z"])
+
+                telemetry["wheel_speed_diff"].append(
+                    abs(env.state["wheel_speed_rl"] - env.state["wheel_speed_rr"])
+                )
+
+                telemetry["reward"].append(reward)
+
+
+
+
                 stats = {
                     "telemetry/speed_kmh": env.state["speed"] * 3.6,
                     "telemetry/gap": env.state["gap"],
@@ -274,7 +384,7 @@ class Evaluator():
                     "per_step_reward": reward,
                 }
                 stats |= time_info
-                wandb_logger.log(stats)
+                #wandb_logger.log(stats)
                 slip_recovered = info.get('slip_recovered', False)
                 is_success, metrics = check_success_criteria(info, env.state, target_speed)
                 
@@ -312,15 +422,36 @@ class Evaluator():
             "OOD_COUNTER",
         }
         is_ood = int(test_class in ood_test_classes)
+        episode_summary = self.summarize_episode_telemetry(telemetry)
+        TEST_CLASS_TO_ID = {
+            "ID": 0,
+
+            "OOD_HI_SPEED": 1,
+            "OOD_LO_SPEED": 2,
+            "OOD_INTENSITY": 3,
+            "OOD_COUNTER": 4,
+            "OOD_COMBINED_HARD": 5,
+
+            "ROBUST_OBS_YAW": 6,
+            "ROBUST_ACTION_CLIP": 7,
+            "ROBUST_COMBINED": 8,
+        }
 
         result = {
+            **episode_summary,
+            "test/terminal_reward": reward,
+            "test/slip_severity": env.slip_severity,
+            "test/gap_severity": env.gap_severity,
+            "test/speed_severity": env.speed_severity,
+            "test/time_bonus": env.time_bonus,
+            "test/speed_bonus": env.speed_bonus,
+            "test/gap_bonus": env.gap_bonus,
+
             "test/episode": episode,
             "test/target_speed_kmh": target_speed,
             "test/success": float(is_success),
             "test/recovery_steps": recovery_steps,
             "test/recovery_time_sec": float(recovery_steps / 25),
-            "test/final_speed_kmh": env.state["speed"] * 3.6,
-            "test/final_gap": abs(env.state.get("gap", 100.0)),
             "test/feint_duration": destabilizer.feint_duration,
             "test/counter_duration": destabilizer.counter_duration,
             "test/intensity_factor": destabilizer.intensity_factor,
@@ -332,7 +463,8 @@ class Evaluator():
             "test/alpha": alpha,
             "test/bin_idx": bin_idx,
             "test/is_ood": is_ood,
-            "test/test_class": test_class
+            "test/test_class": test_class,
+            "test/class_id": TEST_CLASS_TO_ID[test_class]
         }
         result |= time_info
         wandb_logger.log(result)
@@ -374,21 +506,29 @@ class Evaluator():
         
         #OOD INTENSITY
         for i in range(ood_tests//3):
-            for intensity_factor in [1.1, 1.3, 1.5]:
+            for intensity_factor in [1.3, 1.7, 2.0]:
                 slip_param = slip_param_gen.generate()
                 slip_param["intensity_factor"] = intensity_factor
                 self.evaluate(slip_param, test_class="OOD_INTENSITY")
 
         #OOD COUNTER
         for i in range(ood_tests//3):
-            for counter_weight in [3.6, 3.8, 4.0]:
+            for counter_weight in [3.8, 4.2, 4.5]:
                 slip_param = slip_param_gen.generate()
                 slip_param["counter_weight"] = counter_weight
                 self.evaluate(slip_param, test_class='OOD_COUNTER')
-        
 
+        for i in range(ood_tests):
+            slip_param = slip_param_gen.generate()
+            slip_param["target_speed"] = 110
+            slip_param["intensity_factor"] = 2.0
+            slip_param["counter_weight"] = 4.5
+            self.evaluate(slip_param, test_class="OOD_COMBINED_HARD")
+
+
+        iid_tests = 50
         #ID PERTURB
-        for i in range(ood_tests//2):
+        for i in range(iid_tests):
             slip_param = slip_param_gen.generate()
 
             slip_param["target_speed"] = 80
@@ -402,7 +542,7 @@ class Evaluator():
                 test_class="ROBUST_OBS_YAW",
             )
 
-        for i in range(ood_tests//2):
+        for i in range(iid_tests):
             slip_param = slip_param_gen.generate()
 
             slip_param["target_speed"] = 80
@@ -416,7 +556,7 @@ class Evaluator():
                 test_class="ROBUST_ACTION_CLIP",
             )
         
-        for i in range(ood_tests//2):
+        for i in range(iid_tests):
             slip_param = slip_param_gen.generate()
 
             slip_param["target_speed"] = 80
@@ -579,8 +719,14 @@ def main():
         wandb_logger=wandb_logger,
 
     )
-    args.load_path = r"C:\Users\22ave\Desktop\BeyondGrip-Physics-Informed-Control-Recovery-for-Racecars\outputs_recovery\monza\20251215_173937\checkpoint_27516"
 
+################################### LOAD YOUR STUFF HERE######################################################################33333
+
+
+    args.load_path = r"C:\Users\22ave\Desktop\BeyondGrip-Physics-Informed-Control-Recovery-for-Racecars\outputs_recovery\monza\TD_60k_buff\checkpoint_132514"
+################################### LOAD YOUR STUFF HERE######################################################################33333
+
+    
     if args.load_path is not None:
         #load_buffer = False if args.test else True
         agent.load(args.load_path, load_buffer = False)
