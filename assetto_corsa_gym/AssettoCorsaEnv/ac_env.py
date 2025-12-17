@@ -519,7 +519,6 @@ class AssettoCorsaEnv(Env, gym_utils.EzPickle):
         #
         #   Reward
         #
-        self.get_physics_reward(self.state)
         self.state["reward"] = self.get_reward(self.state, actions_diff, buf_infos).item()
 
         
@@ -677,77 +676,6 @@ class AssettoCorsaEnv(Env, gym_utils.EzPickle):
             r -= action_difference_penalty * self.penalize_actions_diff_coef
         r = r.reshape(-1)  # [N, 1] -> [N]
         return r
-    
-    def get_physics_reward(self, state, load_W=0.5, grip_W=0.2, steer_W=0.2, slip_thresh=0.1, mu=1.2):
-        steer = state['steerAngle'] * (1 - self.norm_steer_at_max)
-
-        slip_angle_fl = state['SlipAngle_fl']
-        slip_angle_fr = state['SlipAngle_fr']
-        slip_angle_rl = state['SlipAngle_rl']
-        slip_angle_rr = state['SlipAngle_rr']
-
-        front_slip_angle = (slip_angle_fl + slip_angle_fr) / 2.0
-        rear_slip_angle = (slip_angle_rl + slip_angle_rr) / 2.0
-        abs_front = np.abs(front_slip_angle)
-        abs_rear = np.abs(rear_slip_angle)
-        total_slip = abs_front + abs_rear + 1e-6
-        os_score = abs_rear / total_slip 
-        us_score = abs_front / total_slip
-
-        fl_load = state['fl_wheel_load']
-        fr_load = state['fr_wheel_load']
-        rl_load = state['rl_wheel_load']
-        rr_load = state['rr_wheel_load']
-        front_load = fl_load + fr_load
-        rear_load = rl_load + rr_load
-        total_load = front_load + rear_load
-        front_load_ratio = front_load / max(total_load, 1e-6)
-        rear_load_ratio = rear_load / max(total_load, 1e-6)
-
-        fl_slip_ratio = state['tyre_slip_ratio_fl']
-        fr_slip_ratio = state['tyre_slip_ratio_fr']
-        rl_slip_ratio = state['tyre_slip_ratio_rl']
-        rr_slip_ratio = state['tyre_slip_ratio_rr']
-
-        Fx_fl, Fy_fl = tire_model(fl_slip_ratio, slip_angle_fl, fl_load)
-        Fx_fr, Fy_fr = tire_model(fr_slip_ratio, slip_angle_fr, fr_load)
-        Fx_rl, Fy_rl = tire_model(rl_slip_ratio, slip_angle_rl, rl_load)
-        Fx_rr, Fy_rr = tire_model(rr_slip_ratio, slip_angle_rr, rr_load)
-        rear_force = abs(Fy_rl + Fy_rr)
-        front_force = abs(Fy_fl + Fy_fr)
-
-        reward = 0.0
-        if abs_front > slip_thresh and abs_front > abs_rear:
-            # understeer
-            reward += us_score * load_W * (front_load_ratio - rear_load_ratio) # Weight to front
-            print(f"UD Load: ", us_score * load_W * (front_load_ratio - rear_load_ratio))
-
-            # increase front grip
-            front_combined_force = (np.sqrt(Fx_fl**2 + Fy_fl**2) + np.sqrt(Fx_fr**2 + Fy_fr**2)) / 2.0
-            reward += us_score * grip_W * front_combined_force / (mu * (fl_load + fr_load) + 1e-6) # reward for high front grip
-            print(f"UD Grip: ", us_score * grip_W * front_combined_force / (mu * (fl_load + fr_load) + 1e-6))
-        
-        elif abs_rear > slip_thresh and abs_rear > abs_front:
-            # oversteer
-            reward += os_score * load_W * (rear_load_ratio - front_load_ratio) # Weight to rear
-            print(f"OD Load: ", os_score * load_W * (rear_load_ratio - front_load_ratio))
-
-            front_combined_force = (np.sqrt(Fx_rl**2 + Fy_rl**2) + np.sqrt(Fx_rr**2 + Fy_rr**2)) / 2.0
-            reward += os_score * grip_W * front_combined_force / (mu * (rl_load + rr_load) + 1e-6) # penalize low rear grip
-            print(f"OD Grip: ", os_score * grip_W * front_combined_force / (mu * (rl_load + rr_load) + 1e-6))
-
-            # steering correction
-            correct_dir = (np.sign(rear_slip_angle)) * steer
-            if correct_dir > 0.0: # counter steering
-                reward += os_score * steer_W * np.tanh(2.0 * correct_dir)
-                print(f"OD Steer correction: ", os_score * steer_W * np.tanh(2.0 * correct_dir))
-
-            else: # understeer inducing
-                reward += os_score * steer_W * np.tanh(np.clip((rear_force  -  front_force), -20.0, 20.0))
-                print(f"OD Steer understeer: ", os_score * steer_W * np.tanh(np.clip((rear_force  -  front_force), -20.0, 20.0)))
-
-        print(f"Total Physics Reward: {reward}\n\n")
-        return reward
         
     def recover_car(self):
         logger.info("Recover car")
