@@ -27,6 +27,15 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
         self._reward_step_counter = 0
         self._low_speed_time = 0
 
+        self.slip_severity = 0
+        self.gap_severity = 0
+        self.speed_severity = 0
+        self.crash_severity = 0
+
+        self.time_bonus = 0
+        self.speed_bonus = 0
+        self.gap_bonus = 0
+
 
 
 
@@ -51,6 +60,14 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
 
         self._prev_yaw = None
         self._prev_gap = None
+        self.slip_severity = 0
+        self.gap_severity = 0
+        self.speed_severity = 0
+        self.crash_severity = 0
+
+        self.time_bonus = 0
+        self.speed_bonus = 0
+        self.gap_bonus = 0
 
 
 
@@ -378,6 +395,10 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
             speed_bonus = np.tanh(speed / 30.0)
             GAP_OK = 1.5
             gap_bonus = np.exp(-gap / GAP_OK)
+
+            self.time_bonus = time_bonus
+            self.speed_bonus = speed_bonus
+            self.gap_bonus = gap_bonus
             return 30.0 + 10.0 * time_bonus + 5.0 * speed_bonus + 15 * gap_bonus
 
         slip_n = min(slip / 20.0, 2.0)
@@ -390,6 +411,11 @@ class RecoveryAssettoEnv(AssettoCorsaEnv):
             0.25 * speed_n**2
         )
 
+
+        self.slip_severity = slip_n**2
+        self.gap_severity = gap_n **2
+        self.speed_severity = speed_n ** 2
+        self.crash_severity = crash_severity
         # time survived softens punishment exponentially
 
         t = T / 25.0
