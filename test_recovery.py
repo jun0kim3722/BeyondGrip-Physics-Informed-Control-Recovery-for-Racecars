@@ -122,6 +122,18 @@ def check_success_criteria(info, state, target_speed_kmh):
     return is_success, {"gap": gap, "speed": current_speed}
 
 
+def safe_max(x, default=np.nan):
+    return float(np.max(x)) if len(x) > 0 else default
+
+def safe_min(x, default=np.nan):
+    return float(np.min(x)) if len(x) > 0 else default
+
+def safe_mean(x, default=np.nan):
+    return float(np.mean(x)) if len(x) > 0 else default
+
+def safe_last(x, default=np.nan):
+    return float(x[-1]) if len(x) > 0 else default
+
 
 class Evaluator():
     def __init__(self, config, env, agent, destabilizer, wandb_logger):
@@ -140,70 +152,139 @@ class Evaluator():
         self.steps = 0
     
 
-    # thanks chat gpt
-    def summarize_episode_telemetry(self, telemetry):
-        t = np.array  # shorthand
+    
 
-        summary = {
+    def summarize_episode_telemetry(self, telemetry):
+        return {
             # --------------------
             # Speed
             # --------------------
-            "episode/mean_speed_kmh": float(t(telemetry["speed_kmh"]).mean()),
-            "episode/max_speed_kmh": float(t(telemetry["speed_kmh"]).max()),
-            "episode/min_speed_kmh": float(t(telemetry["speed_kmh"]).min()),
-            "episode/final_speed_kmh": float(telemetry["speed_kmh"][-1]),
+            "episode/mean_speed_kmh": safe_mean(telemetry["speed_kmh"]),
+            "episode/max_speed_kmh": safe_max(telemetry["speed_kmh"]),
+            "episode/final_speed_kmh": safe_last(telemetry["speed_kmh"]),
 
             # --------------------
-            # Gap (stability)
+            # Gap
             # --------------------
-            "episode/max_gap": float(np.abs(t(telemetry["gap"])).max()),
-            "episode/mean_gap": float(np.abs(t(telemetry["gap"])).mean()),
-            "episode/final_gap": float(abs(telemetry["gap"][-1])),
+            "episode/max_gap": safe_max(np.abs(telemetry["gap"])),
+            "episode/mean_gap": safe_mean(np.abs(telemetry["gap"])),
+            "episode/final_gap": safe_last(np.abs(telemetry["gap"])),
 
             # --------------------
-            # Rear slip angle (critical)
+            # Rear slip angle
             # --------------------
-            "episode/max_rear_slip_angle_deg": float(
-                t(telemetry["rear_slip_angle_deg"]).max()
+            "episode/max_rear_slip_angle_deg": safe_max(
+                telemetry["rear_slip_angle_deg"]
             ),
-            "episode/mean_rear_slip_angle_deg": float(
-                t(telemetry["rear_slip_angle_deg"]).mean()
+            "episode/mean_rear_slip_angle_deg": safe_mean(
+                telemetry["rear_slip_angle_deg"]
             ),
 
             # --------------------
             # Slip ratio
             # --------------------
-            "episode/max_rear_slip_ratio": float(
-                t(telemetry["rear_slip_ratio"]).max()
+            "episode/max_rear_slip_ratio": safe_max(
+                telemetry["rear_slip_ratio"]
             ),
 
             # --------------------
-            # Tire force (Dy)
+            # Tire force
             # --------------------
-            "episode/min_rear_Dy": float(
-                t(telemetry["rear_Dy"]).min()
+            "episode/min_rear_Dy": safe_min(
+                telemetry["rear_Dy"]
             ),
 
             # --------------------
-            # Control effort / smoothness
+            # Control / stability
             # --------------------
-            "episode/max_steer_deg": float(np.abs(t(telemetry["steer_deg"])).max()),
-            "episode/mean_abs_steer_deg": float(np.abs(t(telemetry["steer_deg"])).mean()),
+            "episode/max_steer_deg": safe_max(
+                np.abs(telemetry["steer_deg"])
+            ),
+            "episode/mean_abs_steer_deg": safe_mean(
+                np.abs(telemetry["steer_deg"])
+            ),
 
-            "episode/max_yaw_rate": float(np.abs(t(telemetry["yaw_rate"])).max()),
+            "episode/max_yaw_rate": safe_max(
+                np.abs(telemetry["yaw_rate"])
+            ),
 
-            "episode/max_wheel_speed_diff": float(
-                t(telemetry["wheel_speed_diff"]).max()
+            "episode/max_wheel_speed_diff": safe_max(
+                telemetry["wheel_speed_diff"]
             ),
 
             # --------------------
-            # Reward diagnostics
+            # Reward
             # --------------------
-            "episode/total_reward": float(t(telemetry["reward"]).sum()),
-            "episode/min_step_reward": float(t(telemetry["reward"]).min()),
+            "episode/total_reward": safe_mean(telemetry["reward"]),
+            "episode/min_step_reward": safe_min(telemetry["reward"]),
         }
 
-        return summary
+
+
+    # thanks chat gpt
+    # def summarize_episode_telemetry(self, telemetry):
+    #     t = np.array  # shorthand
+
+    #     summary = {
+    #         # --------------------
+    #         # Speed
+    #         # --------------------
+    #         "episode/mean_speed_kmh": float(t(telemetry["speed_kmh"]).mean()),
+    #         "episode/max_speed_kmh": float(t(telemetry["speed_kmh"]).max()),
+    #         "episode/min_speed_kmh": float(t(telemetry["speed_kmh"]).min()),
+    #         "episode/final_speed_kmh": float(telemetry["speed_kmh"][-1]),
+
+    #         # --------------------
+    #         # Gap (stability)
+    #         # --------------------
+    #         "episode/max_gap": float(np.abs(t(telemetry["gap"])).max()),
+    #         "episode/mean_gap": float(np.abs(t(telemetry["gap"])).mean()),
+    #         "episode/final_gap": float(abs(telemetry["gap"][-1])),
+
+    #         # --------------------
+    #         # Rear slip angle (critical)
+    #         # --------------------
+    #         "episode/max_rear_slip_angle_deg": float(
+    #             t(telemetry["rear_slip_angle_deg"]).max()
+    #         ),
+    #         "episode/mean_rear_slip_angle_deg": float(
+    #             t(telemetry["rear_slip_angle_deg"]).mean()
+    #         ),
+
+    #         # --------------------
+    #         # Slip ratio
+    #         # --------------------
+    #         "episode/max_rear_slip_ratio": float(
+    #             t(telemetry["rear_slip_ratio"]).max()
+    #         ),
+
+    #         # --------------------
+    #         # Tire force (Dy)
+    #         # --------------------
+    #         "episode/min_rear_Dy": float(
+    #             t(telemetry["rear_Dy"]).min()
+    #         ),
+
+    #         # --------------------
+    #         # Control effort / smoothness
+    #         # --------------------
+    #         "episode/max_steer_deg": float(np.abs(t(telemetry["steer_deg"])).max()),
+    #         "episode/mean_abs_steer_deg": float(np.abs(t(telemetry["steer_deg"])).mean()),
+
+    #         "episode/max_yaw_rate": float(np.abs(t(telemetry["yaw_rate"])).max()),
+
+    #         "episode/max_wheel_speed_diff": float(
+    #             t(telemetry["wheel_speed_diff"]).max()
+    #         ),
+
+    #         # --------------------
+    #         # Reward diagnostics
+    #         # --------------------
+    #         "episode/total_reward": float(t(telemetry["reward"]).sum()),
+    #         "episode/min_step_reward": float(t(telemetry["reward"]).min()),
+    #     }
+
+    #     return summary
 
     def real_evaluate(self, config, env, agent, episode, destabilizer, wandb_logger,
                       slip_param, test_class):
