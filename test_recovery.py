@@ -702,7 +702,7 @@ class SlipParamGenerator:
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="config.yml", type=str)
-   #parser.add_argument("--load_path", default=None, type=str)
+    parser.add_argument("--load_path", default=None, type=str)
     parser.add_argument("--algo", type=str, default="td3")
     parser.add_argument("--seed", type=int, default=42)
 
@@ -801,11 +801,11 @@ def main():
 
     )
 
-################################### LOAD YOUR STUFF HERE######################################################################33333
+# ################################### LOAD YOUR STUFF HERE######################################################################33333
 
 
-    args.load_path = r"C:\Users\22ave\Desktop\BeyondGrip-Physics-Informed-Control-Recovery-for-Racecars\outputs_recovery\monza\TD_60k_buff\checkpoint_132514"
-################################### LOAD YOUR STUFF HERE######################################################################33333
+#     args.load_path = r"C:\Users\22ave\Desktop\BeyondGrip-Physics-Informed-Control-Recovery-for-Racecars\outputs_recovery\monza\TD_60k_buff\checkpoint_132514"
+# ################################### LOAD YOUR STUFF HERE######################################################################33333
 
     
     if args.load_path is not None:
