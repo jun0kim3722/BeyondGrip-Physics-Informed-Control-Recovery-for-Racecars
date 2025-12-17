@@ -21,7 +21,7 @@ steps: null # placeholder
 Agent:
   num_steps: 2_000_000
   batch_size: 128
-  memory_size: 30_000
+  memory_size: 60_000
   offline_buffer_size: 12_000_000
   use_offline_buffer: False # offline dual buffer
   update_interval: 1

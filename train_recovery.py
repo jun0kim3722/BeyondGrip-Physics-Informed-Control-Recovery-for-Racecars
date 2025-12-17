@@ -15,10 +15,6 @@ sys.path.append(os.path.abspath('./algorithm/discor'))
 
 import AssettoCorsaEnv.assettoCorsa as assettoCorsa
 from assetto_corsa_gym.AssettoCorsaEnv.recovery_ac_env import RecoveryAssettoEnv
-from assetto_corsa_gym.AssettoCorsaEnv.recovery_ac_env import RecoveryAssettoEnv
-from algorithm.discor.discor.replay_buffer import EliteReplayBuffer
-
-
 from assetto_corsa_gym.AssettoCorsaEnv.recovery_phys_ac_env import PhysicsRecoveryEnv
 
 import common.logging_config as logging_config
@@ -131,6 +127,7 @@ def parse_args():
     parser.add_argument("--load_path", default=None)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--algo", type=str, default="td3")
+    parser.add_argument("--pirl", action="store_true", help="Enable physics reward function", default=False)
     parser.add_argument("overrides", nargs=argparse.REMAINDER)
 
     args = parser.parse_args()
@@ -139,8 +136,7 @@ def parse_args():
 
 def main():
     args = parse_args()
-    # Set a path like this to load a path. If you uncomment this line it WILL be used.
-    #args.load_path = r"C:\Users\22ave\Desktop\BeyondGrip-Physics-Informed-Control-Recovery-for-Racecars\outputs_recovery\monza\20251215_151914\checkpoint_32530"
+    is_pirl = args.pirl
    
     # --- Config Setup ---
     config = OmegaConf.load(args.config)
@@ -170,15 +166,26 @@ def main():
             logger.warning(f"Failed to init WandB: {e}")
 
     # --- Environment Setup ---
-    env = assettoCorsa.make_ac_env(
-        cfg=config,
-        work_dir=work_dir,
-        env_class=RecoveryAssettoEnv,
-        env_kwargs=dict(
-            slip_threshold=5,
-            recovery_time=1.5
+    if is_pirl:
+        env = assettoCorsa.make_ac_env(
+            cfg=config,
+            work_dir=work_dir,
+            env_class=PhysicsRecoveryEnv,
+            env_kwargs=dict(
+                slip_threshold=5,
+                recovery_time=1.5
+            )
         )
-    )
+    else:
+        env = assettoCorsa.make_ac_env(
+            cfg=config,
+            work_dir=work_dir,
+            env_class=RecoveryAssettoEnv,
+            env_kwargs=dict(
+                slip_threshold=5,
+                recovery_time=1.5
+            )
+        )
    
     # --- Agent Setup ---
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
