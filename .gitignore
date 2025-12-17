@@ -61,4 +61,5 @@ MUJOCO_LOG.TXT
 # custom
 output
 outputs
+outputs_recovery/
 assetto_corsa_gym.code-workspace
