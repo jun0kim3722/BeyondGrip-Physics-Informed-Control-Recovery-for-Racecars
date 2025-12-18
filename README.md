@@ -206,7 +206,11 @@ The **Custom Shaders Patch** is required to restart the car.
 <br>
 
 ## 7. Train Model
+To run the model, place the pre-defined racing line in the following location. [Download Link](https://drive.google.com/file/d/12f5PuA98XcDN8y7Rg9i519Y5v4mL32cu/view?usp=drive_link)
 
+```
+assetto_corsa_gym\AssettoCorsaConfigs\tracks\monza_0.1m.pkl
+```
 ### 7.1 Hyperparameters
 
 | Parameter | Value |
