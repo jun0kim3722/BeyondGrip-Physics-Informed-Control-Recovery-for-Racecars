@@ -1,0 +1,145 @@
+ECE 595 Reinforcement Learning
+
+Physics Informed Control Recovery for Race Cars
+
+1. Overview
+
+This instruction provides guidance on installing the Assetto Corsa game simulation and setting up an environment to train and experiment with a model that recovers the car when it slips inside the game.
+
+Features:
+- High-Fidelity Simulation: Realistic car dynamics and track environments.
+- Customizable Scenarios: Various cars, tracks, and weather conditions.
+- RL Integration: Compatible with Gym for easy application of RL algorithms.
+
+2. System Requirements
+
+The hardware specifications below are the specs we used to set up the simulation and train the reinforcement learning model.
+
+2.1 Hardware
+- CPU: Intel i7-13700K
+- GPU: RTX A4000
+- RAM: > 16 GB
+- Storage: > 200 GB
+
+2.2 Software
+- OS: Windows 11
+- Python: 3.9
+- CUDA: 12.8
+- Simulator: Assetto Corsa (Steam)
+
+3. Repository Structure
+
+project_root/
+├── assetto_corsa_gym/
+│   ├── AssettoCorsaEnv/
+│   │   ├── ac_env.py
+│   │   ├── recovery_ac_env.py
+│   │   └── ac_client.py
+│   ├── AssettoCorsaConfigs/
+│   │   ├── cars/
+│   │   └── tracks/
+│   └── AssettoCorsaPlugin/
+│       └── plugins/sensors_par
+├── algorithm/
+│   └── discor/
+│       └── discor/
+│           ├── agent.py
+│           ├── network.py
+│           ├── replay_buffer.py
+│           └── algorithm/
+│               ├── base.py
+│               ├── ddpg.py
+│               ├── discor.py
+│               ├── eval.py
+│               ├── sac.py
+│               └── td3.py
+├── common/
+│   ├── logger.py
+│   └── misc.py
+├── outputs_recovery/
+├── train_recovery.py
+├── test_recovery.py
+├── config.yml
+├── ac_offline_train_paths.yml
+└── requirements.txt
+
+4. Environment Setup
+
+4.1 Python Environment
+
+Install Visual Studio Compiler
+- Install Visual Studio C++ Build Tools and include C++ build tools.
+
+Install Python using Anaconda
+conda create -n p309 python=3.9.13
+conda activate p309
+pip install setuptools==65.5.0 "cython<3"
+pip install "wheel<0.40.0"
+python -m pip install pip
+pip install -r requirements.txt
+conda install pytorch==1.12.1 cudatoolkit=11.6 -c pytorch -c conda-forge
+
+5. Simulation - Assetto Corsa Gym
+
+5.1 Steam Installation
+- Install Steam and purchase Assetto Corsa.
+
+5.2 Assetto Corsa Plugin Installation
+
+Install vJoy
+- Download and install vJoy.
+
+Copy the Plugin Files
+- Copy sensor_par folder to:
+C:\Program Files (x86)\Steam\steamapps\common\assettocorsa\apps\python\sensor_par
+
+Install Configuration Files
+- Copy Vjoy2.ini and WASD.ini to Documents\Assetto Corsa\cfg\controllers\savedsetups
+- Copy DLLs to assettocorsa\system\x64
+
+Install Custom Shaders Patch
+- Install Content Manager and enable Custom Shaders Patch.
+- Always launch Assetto Corsa via Content Manager.
+
+6. Configuring Assetto Corsa
+
+Enable the Plugin
+- Enable sensor_par in Options > General > UI Modules.
+
+Configure Controls
+- Select vJoy as active input.
+
+Set Video and Display Settings
+- Frame Rate Limit: 50 FPS
+
+Start a Hotlap Session
+- Mode: Challenge > Hotlap
+
+Adjust Driving Assists
+- Traction Control: OFF
+- Stability Control: OFF
+- ABS: OFF
+- Mechanical Damage: OFF
+- Tyre Wear: OFF
+
+7. Train Model
+
+Place racing line file at:
+assetto_corsa_gym\AssettoCorsaConfigs\tracks\monza_0.1m.pkl
+
+7.1 Hyperparameters
+- Track: Monza
+- Car: BMW Z4 GT3
+- Learning Rate: 0.0003
+- Batch Size: 128
+- Replay Buffer: 60000
+- Discount Factor: 0.992
+- Target Update Coefficient: 0.005
+
+7.2 Training New Model
+
+python train_recovery.py --algo td3 --randomize_speed --randomize_steer --num_episodes 10000
+
+7.3 Running Pre-trained Model
+
+python test_recovery.py --load_path outputs_recovery/monza/[timestamp]/model_final
