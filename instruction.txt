@@ -11,6 +11,8 @@ Features:
 - Customizable Scenarios: Various cars, tracks, and weather conditions.
 - RL Integration: Compatible with Gym for easy application of RL algorithms.
 
+--------------------------------------------------
+
 2. System Requirements
 
 The hardware specifications below are the specs we used to set up the simulation and train the reinforcement learning model.
@@ -27,20 +29,22 @@ The hardware specifications below are the specs we used to set up the simulation
 - CUDA: 12.8
 - Simulator: Assetto Corsa (Steam)
 
+--------------------------------------------------
+
 3. Repository Structure
 
 project_root/
-├── assetto_corsa_gym/
-│   ├── AssettoCorsaEnv/
+├── assetto_corsa_gym/           # Assetto Corsa simulation environment
+│   ├── AssettoCorsaEnv/         # Core environment implementation
 │   │   ├── ac_env.py
 │   │   ├── recovery_ac_env.py
 │   │   └── ac_client.py
-│   ├── AssettoCorsaConfigs/
+│   ├── AssettoCorsaConfigs/     # Vehicle and track configurations
 │   │   ├── cars/
 │   │   └── tracks/
-│   └── AssettoCorsaPlugin/
+│   └── AssettoCorsaPlugin/      # Python plugin for sensor data and telemetry
 │       └── plugins/sensors_par
-├── algorithm/
+├── algorithm/                   # RL algorithms
 │   └── discor/
 │       └── discor/
 │           ├── agent.py
@@ -63,14 +67,17 @@ project_root/
 ├── ac_offline_train_paths.yml
 └── requirements.txt
 
+--------------------------------------------------
+
 4. Environment Setup
 
 4.1 Python Environment
 
 Install Visual Studio Compiler
-- Install Visual Studio C++ Build Tools and include C++ build tools.
+- https://visualstudio.microsoft.com/visual-cpp-build-tools/
 
 Install Python using Anaconda
+
 conda create -n p309 python=3.9.13
 conda activate p309
 pip install setuptools==65.5.0 "cython<3"
@@ -79,67 +86,30 @@ python -m pip install pip
 pip install -r requirements.txt
 conda install pytorch==1.12.1 cudatoolkit=11.6 -c pytorch -c conda-forge
 
+--------------------------------------------------
+
 5. Simulation - Assetto Corsa Gym
 
 5.1 Steam Installation
-- Install Steam and purchase Assetto Corsa.
+- https://store.steampowered.com/about/
 
 5.2 Assetto Corsa Plugin Installation
 
 Install vJoy
-- Download and install vJoy.
+- https://sourceforge.net/projects/vjoystick/
 
-Copy the Plugin Files
-- Copy sensor_par folder to:
-C:\Program Files (x86)\Steam\steamapps\common\assettocorsa\apps\python\sensor_par
+Install Custom Shaders Patch (Content Manager)
+- https://acstuff.ru/app/
 
-Install Configuration Files
-- Copy Vjoy2.ini and WASD.ini to Documents\Assetto Corsa\cfg\controllers\savedsetups
-- Copy DLLs to assettocorsa\system\x64
+--------------------------------------------------
 
-Install Custom Shaders Patch
-- Install Content Manager and enable Custom Shaders Patch.
-- Always launch Assetto Corsa via Content Manager.
+7.4 Pre-trained Models
 
-6. Configuring Assetto Corsa
+SAC:
+https://app.box.com/s/w7n028tym8z5uez1o5te152epe4hj3ly
 
-Enable the Plugin
-- Enable sensor_par in Options > General > UI Modules.
+TD3_non_physics:
+https://app.box.com/s/23227ulctimw0jzyztopj7kdznt8z1r0
 
-Configure Controls
-- Select vJoy as active input.
-
-Set Video and Display Settings
-- Frame Rate Limit: 50 FPS
-
-Start a Hotlap Session
-- Mode: Challenge > Hotlap
-
-Adjust Driving Assists
-- Traction Control: OFF
-- Stability Control: OFF
-- ABS: OFF
-- Mechanical Damage: OFF
-- Tyre Wear: OFF
-
-7. Train Model
-
-Place racing line file at:
-assetto_corsa_gym\AssettoCorsaConfigs\tracks\monza_0.1m.pkl
-
-7.1 Hyperparameters
-- Track: Monza
-- Car: BMW Z4 GT3
-- Learning Rate: 0.0003
-- Batch Size: 128
-- Replay Buffer: 60000
-- Discount Factor: 0.992
-- Target Update Coefficient: 0.005
-
-7.2 Training New Model
-
-python train_recovery.py --algo td3 --randomize_speed --randomize_steer --num_episodes 10000
-
-7.3 Running Pre-trained Model
-
-python test_recovery.py --load_path outputs_recovery/monza/[timestamp]/model_final
+TD3_physics:
+https://app.box.com/s/qdsppvts7e3n8m4sp5cgw7gulgy7zct8

@@ -271,3 +271,11 @@ To evaluate a pre-trained model:
 python ./test_recovery.py \
     --load_path outputs_recovery/monza/[timestamp]/model_final
 ```
+
+### 7.4 Pre-trained Models
+
+You can download our pre-trained models here:
+
+- SAC: [Download](https://app.box.com/s/w7n028tym8z5uez1o5te152epe4hj3ly)
+- TD3_non_physics: [Download](https://app.box.com/s/23227ulctimw0jzyztopj7kdznt8z1r0)
+- TD3_physics: [Download](https://app.box.com/s/qdsppvts7e3n8m4sp5cgw7gulgy7zct8)
