@@ -1,6 +1,12 @@
-# ECE 595 Reinforcement Learning
+# BeyondGrip: Physics-Informed Control Recovery for Racecars (ECE 595 Reinforcement Learning)
 
-## **Physics Informed Control Recovery for Race Cars**
+[![Read the Report](https://img.shields.io/badge/Read_Report-PDF-red?style=for-the-badge&logo=adobeacrobatreader)](./docs/Project_Report.pdf)
+
+<div align="center">
+  <a href="https://youtu.be/nA9INVZnxDE">
+    <img src="https://img.youtube.com/vi/nA9INVZnxDE/maxresdefault.jpg" width="800px">
+  </a>
+</div>
 
 ## 1. Overview
 
@@ -127,7 +133,7 @@ assetto_corsa_gym\AssettoCorsaPlugin\
 ```
 
 - VJoy Configuration
-  - Copy `Vjoy2.ini` to:  
+  - Copy `Vjoy.ini` to:  
     ```bash
     C:\Users\%user%\Documents\Assetto Corsa\
         \cfg\controllers\savedsetups
