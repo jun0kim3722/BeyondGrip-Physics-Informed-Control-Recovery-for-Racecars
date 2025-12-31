@@ -1,6 +1,6 @@
 # BeyondGrip: Physics-Informed Control Recovery for Racecars (ECE 595 Reinforcement Learning)
 
-[![Read the Report](https://img.shields.io/badge/Read_Report-PDF-red?style=for-the-badge&logo=adobeacrobatreader)](./docs/Project_Report.pdf)
+[![Read the Report](https://img.shields.io/badge/Read_Report-PDF-red?style=for-the-badge&logo=adobeacrobatreader)](./docs/BeyondGrip_Physics_Informed_Control_Recovery_for_Racecars.pdf)
 
 <div align="center">
   <a href="https://youtu.be/nA9INVZnxDE">
